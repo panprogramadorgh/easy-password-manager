@@ -35,3 +35,10 @@ int getnline(char *line, int n)
     *(line + i++) = c;
   *(line + i) = '\0';
 }
+
+void prtusage(void)
+{
+  printf("Usage:\n");
+  printf("\t- get-passwd <password name>\n");
+  printf("\t- set-passwd <password name> <password>\n");
+}

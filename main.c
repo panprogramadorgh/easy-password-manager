@@ -1,15 +1,42 @@
 #include "file.c"
 #include "input.c"
 
-int main()
+int main(int argc, char *argv[])
 {
-  // if (getpasswd("prueba", NULL) == 0)
-  // {
-  //   setpasswd("prueba", "newpassword");
-  // }
-  // char passvalue[MAXLN];
-  // getpasswd("prueba", passvalue);
-  // printf("%s\n", passvalue);
+  if (argc > 1 && !strcmp(argv[1], "set-passwd"))
+  {
+    if (argc != 4)
+    {
+      prtusage();
+      return EXIT_FAILURE;
+    }
+    int signal = setpasswd(argv[2], argv[3]);
+    if (signal == inv_arg_err)
+      printf("error: to long arguments.\n");
+    else if (signal == open_file_err)
+      printf("error: read file error.\n");
+  }
+  else if (argc > 1 && !strcmp(argv[1], "get-passwd"))
+  {
+    if (argc != 3)
+    {
+      prtusage();
+      return EXIT_FAILURE;
+    }
+    char passvalue[MAXPASSVAL];
+    int signal = getpasswd(argv[2], passvalue);
+    if (signal == success)
+      printf("%s\n", passvalue);
+    else if (signal == not_found_err)
+      printf("error: password not found '%s'\n", argv[2]);
+    else if (signal == open_file_err)
+      printf("error: read file error.\n");
+  }
+  else
+  {
+    prtusage();
+    return EXIT_FAILURE;
+  }
 
-  return 0;
+  return EXIT_SUCCESS;
 }

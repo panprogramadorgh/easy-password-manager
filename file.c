@@ -31,21 +31,22 @@ int getpasswd(char *passname, char *passvalue)
             *passvalue++ = *ch++;
         }
         fclose(file);
-        return 1;
+        return success;
       }
     }
+    return not_found_err;
   }
   fclose(file);
-  return 0;
+  return open_file_err;
 }
 
 /* Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna 0, si no, retorna 1. */
 int setpasswd(char *passname, char *passvalue)
 {
   if (strlen(passname) > MAXPASSNAME)
-    return 0;
+    return inv_arg_err;
   else if (strlen(passvalue) > MAXPASSVAL)
-    return 0;
+    return inv_arg_err;
 
   FILE *file = fopen(PASSDATA, "a");
   if (file != NULL)
@@ -54,8 +55,8 @@ int setpasswd(char *passname, char *passvalue)
     setpasswdln(nline, passname, passvalue);
     fprintf(file, "%s", nline);
     fclose(file);
-    return 1;
+    return success;
   }
   fclose(file);
-  return 0;
+  return open_file_err;
 }
