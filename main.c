@@ -1,5 +1,6 @@
 #include "file.c"
 #include "input.c"
+#include "encrypt.c"
 
 int main(int argc, char *argv[])
 {
@@ -8,6 +9,11 @@ int main(int argc, char *argv[])
     if (argc != 4)
     {
       prtusage();
+      return EXIT_FAILURE;
+    }
+    if (getpasswd(argv[2], NULL) == success)
+    {
+      printf("error: password name is taken '%s'\n", argv[2]);
       return EXIT_FAILURE;
     }
     int signal = setpasswd(argv[2], argv[3]);
