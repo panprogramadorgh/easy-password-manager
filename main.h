@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <sodium.h>
 
 #define MAXLN 1024
 #define MAXPASSNAME 64

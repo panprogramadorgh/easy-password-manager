@@ -1,10 +1,38 @@
 #include "file.c"
 #include "input.c"
-#include "encrypt.c"
+#include "crypto.c"
 
 int main(int argc, char *argv[])
 {
-  if (argc > 1 && !strcmp(argv[1], "set-passwd"))
+  if (argc > 1 && !strcmp(argv[1], "set-master-key"))
+  {
+    if (argc != 3)
+    {
+      prtusage();
+      return EXIT_FAILURE;
+    }
+    char *confirm = "I want to DELETE ALL passwords";
+    printf("Are you sure you want to set a new master key? Setting a master\n");
+    printf("key means resetting the encrypted data file and thus deleting all\n");
+    printf("the passwords stored on it.\n\n");
+    printf("If you are really sure, type the following message and press [Enter]:  %s\n\n", confirm);
+    char line[MAXLN];
+    getnline(line, MAXLN);
+    if (strcmp(confirm, line)) // Confirmacion fallida.
+    {
+      fprintf(stderr, "error: incorrect confirmation.\n");
+      return EXIT_FAILURE;
+    }
+    /* Guardar password hasheada en variable de entorno. */
+    unsigned char hash[crypto_pwhash_STRBYTES];
+    if (crypto_pwhash_str(hash, line, strlen(line), crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0)
+    {
+      fprintf(stderr, "error: unexpected error when derivating key.\n");
+      return EXIT_FAILURE;
+    }
+    printf("%s\n", hash);
+  }
+  else if (argc > 1 && !strcmp(argv[1], "set-passwd"))
   {
     if (argc != 4)
     {
