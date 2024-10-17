@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -17,10 +20,6 @@
 #define MAXLN 1024
 #define MAXPASSNAME 64
 #define MAXPASSVAL MAXLN - MAXPASSNAME - 2 // Hay que quitar el espacio entre nombre y valor y el salto de linea.
-
-/* TODO: Ruta dinamica de usuario. */
-#define PASSDATA_DIR "/home/alvaro/.local/share/epm"
-#define PASSDATA_FILE (PASSDATA_DIR "/data.enc")
 
 enum passwd_signals
 {

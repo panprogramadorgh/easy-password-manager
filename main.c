@@ -4,12 +4,85 @@
 
 int main(int argc, char *argv[])
 {
-  /* Crea la carpeta donde se ubicara el archivo de datos */
-  if (!direxists(PASSDATA_DIR))
+  /* TODO: Cambiar enfoque de variables de entorno a lectura de archivos.  */
+
+  // const char *EMP_AES_HASHED_KEY = getenv("EMP_AES_HASHED_KEY");
+  // const char *EMP_AES_IV = getenv("EMP_AES_IV");
+  // if (EMP_AES_HASHED_KEY == NULL)
+  // {
+  //   fprintf(stderr, "error: 'EMP_AES_HASHED_KEY' environment variable is not defined.\n");
+  //   return EXIT_FAILURE;
+  // }
+  // else if (EMP_AES_IV == NULL)
+  // {
+  //   fprintf(stderr, "error: 'EMP_AES_IV' environment variable is not defined.\n");
+  //   return EXIT_FAILURE;
+  // }
+
+  /* Crea la carpeta y archivos de datos del programa. */
+  char *datadir_path = get_datadir_path();
+  char *datafile_path = get_datafile_path();
+  char *keyfile_path = get_keyfile_path();
+  char *ivfile_path = get_ivfile_path();
+  /* Manejar error de calculo de ruta. */
+  if (!datadir_path ||
+      !datafile_path ||
+      !keyfile_path ||
+      !ivfile_path)
   {
-    if (createdir(PASSDATA_DIR) != 0)
-      fprintf(stderr, "error: there was en error creating the directories.\n");
+    fprintf(stderr, "error: there was an error calculating data files paths.\n");
+    return EXIT_FAILURE;
   }
+  /* Creacion de directorio de datos. */
+  if (!direxists(datadir_path))
+  {
+    if (createdir(datadir_path) != 0)
+    {
+      fprintf(stderr, "error: there was en error creating program data directories.\n");
+      return EXIT_FAILURE;
+    }
+  }
+  /* FIXME: Permisos de archivos creados con `open`.  */
+  /* Creacion del archivo de datos. */
+  if (!filexists(datafile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(datafile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", datafile_path);
+      return EXIT_FAILURE;
+    }
+    close(fd);
+  }
+  if (!filexists(keyfile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(keyfile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", keyfile_path);
+      return EXIT_FAILURE;
+    }
+    close(fd);
+  }
+  if (!filexists(ivfile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(ivfile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", ivfile_path);
+      return EXIT_FAILURE;
+    }
+    close(fd);
+  }
+
+  printf("%s\n", datafile_path);
+  printf("%s\n", keyfile_path);
+  printf("%s\n", ivfile_path);
+
+  return EXIT_SUCCESS;
 
   if (argc > 1 && !strcmp(argv[1], "set-master-key"))
   {
@@ -51,7 +124,7 @@ int main(int argc, char *argv[])
     };
 
     /* Vaciando archivo de datos.  */
-    FILE *file = fopen(PASSDATA_FILE, "w");
+    FILE *file = fopen(datafile_path, "w");
     if (file == NULL)
     {
       fprintf(stderr, "error: there was an error creating new data file.\n");
@@ -63,10 +136,9 @@ int main(int argc, char *argv[])
     RAND_bytes(iv, sizeof(iv));
     const char *iv_base64 = serialize_buffer_to_base64(iv, sizeof(iv));
 
-    /* TODO: Establecer variable de entorno de manera persistente y no para el proceso. */
-    /* Configurando variable de entorno para clave AES hasheada y vector de inicializacion. */
-    setenv("EPM_AES_HASHED_KEY", aes_key_hash, 1);
-    setenv("EPM_AES_IV", iv_base64, 1);
+    /* TODO: Cambiar enfoque de variables de entorno a archivos. */
+    // setenv("EPM_AES_HASHED_KEY", aes_key_hash, 1);
+    // setenv("EPM_AES_IV", iv_base64, 1);
   }
   else if (argc > 1 && !strcmp(argv[1], "set-passwd"))
   {

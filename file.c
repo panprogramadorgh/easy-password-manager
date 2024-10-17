@@ -1,5 +1,94 @@
 #include "main.h"
 
+/* --- Obtencion de rutas para archivo de datos. --- */
+
+#define MAXPATHLENGTH 256
+
+/* Permite obtener la ruta al directorio donde se encuentra el archivo de datos. Tras utilizarse liberar memoria con free.  */
+
+char *get_datadir_path()
+{
+  char *dirpath = (char *)malloc(MAXPATHLENGTH);
+  if (dirpath == NULL)
+    return NULL;
+
+  char *frst_chunk = getenv("HOME"); // Ej: /home/alvaro
+  char *scnd_chunk = ".local/share/epm";
+  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
+    return NULL;
+
+  snprintf(dirpath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk); // Ej: /home/alvaro/.local/share/epm
+
+  return dirpath;
+}
+
+/* TODO: Crear funcion para simplicar lectura de archivos de datos del programa.  */
+
+/* Permite obtener la ruta al archivo de datos. Tras utilizarse liberar memoria con free. */
+char *get_datafile_path()
+{
+  char *filepath = (char *)malloc(MAXPATHLENGTH);
+  if (filepath == NULL)
+    return NULL;
+
+  char *frst_chunk = eget_datadir_path();
+  char *scnd_chunk = "data.enc";
+  if (frst_chunk == NULL)
+    return NULL;
+  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
+    return NULL;
+
+  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
+
+  free(frst_chunk); // Cerrar fugas de memoria.
+
+  return filepath;
+}
+
+char *get_keyfile_path()
+{
+  char *filepath = (char *)malloc(MAXPATHLENGTH);
+  if (filepath == NULL)
+    return NULL;
+
+  char *frst_chunk = get_datadir_path();
+  char *scnd_chunk = "epm_aes_hashed_key.key";
+  if (frst_chunk == NULL)
+    return NULL;
+  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
+    return NULL;
+
+  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
+
+  free(frst_chunk); // Cerrar fugas de memoria.
+
+  return filepath;
+}
+
+char *get_ivfile_path()
+{
+  char *filepath = (char *)malloc(MAXPATHLENGTH);
+  if (filepath == NULL)
+    return NULL;
+
+  char *frst_chunk = datadir_path();
+  char *scnd_chunk = "epm_aes_iv.key";
+  if (frst_chunk == NULL)
+    return NULL;
+  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
+    return NULL;
+
+  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
+
+  free(frst_chunk); // Cerrar fugas de memoria.
+
+  return filepath;
+}
+
+// TODO: Normalizar nombres de rutinas.
+
+/* --- Funciones de escritura / lectura del archivo de datos. --- */
+
 /* Formatea un string de acuerdo con el formato del archivo de contraseñas. */
 static void setpasswdln(char *dest, char *passname, char *passvalue)
 {
@@ -12,7 +101,8 @@ static void setpasswdln(char *dest, char *passname, char *passvalue)
 /* Permite obtener una password por su nombre. La funcion retorna 1 si exsite y 0 si no exsite; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
 int getpasswd(char *passname, char *passvalue)
 {
-  FILE *file = fopen(PASSDATA_FILE, "r");
+  char *datafile_path = get_datafile_path();
+  FILE *file = fopen(datafile_path, "r");
   if (file != NULL)
   {
     char buff[MAXLN];
@@ -30,12 +120,16 @@ int getpasswd(char *passname, char *passvalue)
           while (*ch != '\n')
             *passvalue++ = *ch++;
         }
+        free(datafile_path);
         fclose(file);
         return success;
       }
     }
+    free(datafile_path);
+    fclose(file);
     return not_found_err;
   }
+  free(datafile_path);
   fclose(file);
   return open_file_err;
 }
@@ -48,25 +142,37 @@ int setpasswd(char *passname, char *passvalue)
   else if (strlen(passvalue) > MAXPASSVAL)
     return inv_arg_err;
 
-  FILE *file = fopen(PASSDATA_FILE, "a");
+  char *datafile_path = get_datafile_path();
+  FILE *file = fopen(datafile_path, "a");
   if (file != NULL)
   {
     char nline[MAXLN];
     setpasswdln(nline, passname, passvalue);
     fprintf(file, "%s", nline);
+    free(datafile_path);
     fclose(file);
     return success;
   }
+  free(datafile_path);
   fclose(file);
   return open_file_err;
 }
 
+/* Retorna 1 si el directorio existe, 0 si no. */
 int direxists(char *path)
 {
   struct stat st;
   return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+/* Retorna 1 si el archivo existe, 0 si no. */
+int filexists(char *path)
+{
+  struct stat st;
+  return stat(path, &st) == 0 && !S_ISDIR(st.st_mode);
+}
+
+/* Permire crear todos los directorios intermedios en una ruta. */
 int createdir(char *path)
 {
   char spath[256];
