@@ -31,7 +31,7 @@ char *get_datafile_path()
   if (filepath == NULL)
     return NULL;
 
-  char *frst_chunk = eget_datadir_path();
+  char *frst_chunk = get_datadir_path();
   char *scnd_chunk = "data.enc";
   if (frst_chunk == NULL)
     return NULL;
@@ -71,7 +71,7 @@ char *get_ivfile_path()
   if (filepath == NULL)
     return NULL;
 
-  char *frst_chunk = datadir_path();
+  char *frst_chunk = get_datadir_path();
   char *scnd_chunk = "epm_aes_iv.key";
   if (frst_chunk == NULL)
     return NULL;
@@ -202,6 +202,72 @@ int createdir(char *path)
   /* Ultimo directorio. */
   if (mkdir(spath, 0755) != 0 && errno != EEXIST)
     return -1;
+
+  return 0;
+}
+
+/* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
+int verify_program_files(
+    char *datadir_path,
+    char *datafile_path,
+    char *keyfile_path,
+    char *ivfile_path)
+{
+  /* Manejar error de calculo de ruta. */
+  if (!datadir_path ||
+      !datafile_path ||
+      !keyfile_path ||
+      !ivfile_path)
+  {
+    fprintf(stderr, "error: there was an error calculating data files paths.\n");
+    return -1;
+  }
+  /* Creacion de directorio de datos. */
+  if (!direxists(datadir_path))
+  {
+    if (createdir(datadir_path) != 0)
+    {
+      fprintf(stderr, "error: there was en error creating program data directories.\n");
+      return -1;
+    }
+  }
+  /* Creacion del archivo de datos. */
+  if (!filexists(datafile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(datafile_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", datafile_path);
+      return -1;
+    }
+    close(fd);
+  }
+  /* Creacion del archivo de clave. */
+  if (!filexists(keyfile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(keyfile_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", keyfile_path);
+      return -1;
+    }
+    close(fd);
+  }
+  /* Creacion del archivo de iv. */
+  if (!filexists(ivfile_path))
+  {
+    // Permisos de archivo 600
+    int fd = open(ivfile_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+    {
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", ivfile_path);
+      return EXIT_FAILURE;
+      -1;
+    }
+    close(fd);
+  }
 
   return 0;
 }

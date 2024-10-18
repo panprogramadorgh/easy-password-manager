@@ -4,85 +4,17 @@
 
 int main(int argc, char *argv[])
 {
-  /* TODO: Cambiar enfoque de variables de entorno a lectura de archivos.  */
-
-  // const char *EMP_AES_HASHED_KEY = getenv("EMP_AES_HASHED_KEY");
-  // const char *EMP_AES_IV = getenv("EMP_AES_IV");
-  // if (EMP_AES_HASHED_KEY == NULL)
-  // {
-  //   fprintf(stderr, "error: 'EMP_AES_HASHED_KEY' environment variable is not defined.\n");
-  //   return EXIT_FAILURE;
-  // }
-  // else if (EMP_AES_IV == NULL)
-  // {
-  //   fprintf(stderr, "error: 'EMP_AES_IV' environment variable is not defined.\n");
-  //   return EXIT_FAILURE;
-  // }
-
-  /* Crea la carpeta y archivos de datos del programa. */
-  char *datadir_path = get_datadir_path();
-  char *datafile_path = get_datafile_path();
-  char *keyfile_path = get_keyfile_path();
-  char *ivfile_path = get_ivfile_path();
-  /* Manejar error de calculo de ruta. */
-  if (!datadir_path ||
-      !datafile_path ||
-      !keyfile_path ||
-      !ivfile_path)
-  {
-    fprintf(stderr, "error: there was an error calculating data files paths.\n");
+  /* Verificacion y creacion de archivos de datos del programa.
+     $HOME/.local/sahre/epm  */
+  char *datadir_path = get_datadir_path();   // Directorio padre
+  char *datafile_path = get_datafile_path(); // Contraseñas
+  char *keyfile_path = get_keyfile_path();   // Clave privada
+  char *ivfile_path = get_ivfile_path();     // Vector inicializacion
+  if (verify_program_files(datadir_path,
+                           datafile_path,
+                           keyfile_path,
+                           ivfile_path) != 0)
     return EXIT_FAILURE;
-  }
-  /* Creacion de directorio de datos. */
-  if (!direxists(datadir_path))
-  {
-    if (createdir(datadir_path) != 0)
-    {
-      fprintf(stderr, "error: there was en error creating program data directories.\n");
-      return EXIT_FAILURE;
-    }
-  }
-  /* FIXME: Permisos de archivos creados con `open`.  */
-  /* Creacion del archivo de datos. */
-  if (!filexists(datafile_path))
-  {
-    // Permisos de archivo 600
-    int fd = open(datafile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
-    if (fd == -1)
-    {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", datafile_path);
-      return EXIT_FAILURE;
-    }
-    close(fd);
-  }
-  if (!filexists(keyfile_path))
-  {
-    // Permisos de archivo 600
-    int fd = open(keyfile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
-    if (fd == -1)
-    {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", keyfile_path);
-      return EXIT_FAILURE;
-    }
-    close(fd);
-  }
-  if (!filexists(ivfile_path))
-  {
-    // Permisos de archivo 600
-    int fd = open(ivfile_path, O_CREAT | O_WRONLY | S_IRUSR | S_IWUSR);
-    if (fd == -1)
-    {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", ivfile_path);
-      return EXIT_FAILURE;
-    }
-    close(fd);
-  }
-
-  printf("%s\n", datafile_path);
-  printf("%s\n", keyfile_path);
-  printf("%s\n", ivfile_path);
-
-  return EXIT_SUCCESS;
 
   if (argc > 1 && !strcmp(argv[1], "set-master-key"))
   {
@@ -123,22 +55,39 @@ int main(int argc, char *argv[])
       return EXIT_FAILURE;
     };
 
+    /* Generando vector de inicializacion para AES. */
+    unsigned char aes_iv_buffer[AES_BLOCK_SIZE];
+    RAND_bytes(aes_iv_buffer, sizeof(aes_iv_buffer));
+    const char *aes_iv_base64 = serialize_buffer_to_base64(aes_iv_buffer, sizeof(aes_iv_buffer));
+
     /* Vaciando archivo de datos.  */
-    FILE *file = fopen(datafile_path, "w");
-    if (file == NULL)
+    FILE *datafile = fopen(datafile_path, "w+");
+    if (datafile == NULL)
     {
       fprintf(stderr, "error: there was an error creating new data file.\n");
       return EXIT_FAILURE;
     }
+    fclose(datafile);
 
-    /* Generando vector de inicializacion para AES. */
-    unsigned char iv[AES_BLOCK_SIZE];
-    RAND_bytes(iv, sizeof(iv));
-    const char *iv_base64 = serialize_buffer_to_base64(iv, sizeof(iv));
+    /* Guardando nueva clave. */
+    FILE *keyfile = fopen(aes_key_base64, "w+");
+    if (keyfile == NULL)
+    {
+      fprintf(stderr, "error: there was an error creating new key file.\n");
+      return EXIT_FAILURE;
+    }
+    fprintf(keyfile, "%s", aes_key_base64);
+    fclose(keyfile);
 
-    /* TODO: Cambiar enfoque de variables de entorno a archivos. */
-    // setenv("EPM_AES_HASHED_KEY", aes_key_hash, 1);
-    // setenv("EPM_AES_IV", iv_base64, 1);
+    /* Guardando nuevo vector de inicializacion. */
+    FILE *ivfile = fopen(ivfile_path, "w+");
+    if (ivfile == NULL)
+    {
+      fprintf(stderr, "error: there was an error creating new iv file.\n");
+      return EXIT_FAILURE;
+    }
+    fprintf(ivfile, "%s", aes_iv_base64);
+    fclose(ivfile);
   }
   else if (argc > 1 && !strcmp(argv[1], "set-passwd"))
   {
@@ -179,6 +128,14 @@ int main(int argc, char *argv[])
     prtusage();
     return EXIT_FAILURE;
   }
+
+  /* Liberar memoria relativa a las rutas de archivos de datos. */
+  free(datadir_path);
+  free(datafile_path);
+  free(keyfile_path);
+  free(ivfile_path);
+  datadir_path = datafile_path =
+      keyfile_path = ivfile_path = NULL;
 
   return EXIT_SUCCESS;
 }
