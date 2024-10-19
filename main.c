@@ -20,35 +20,39 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  if (verify_program_files(datadir_path,
-                           datafile_path,
-                           keyfile_path,
-                           ivfile_path) != 0)
+  if (init_program_files(datadir_path,
+                         datafile_path,
+                         keyfile_path,
+                         ivfile_path) != 0)
     return EXIT_FAILURE;
 
   if (argc > 1 && !strcmp(argv[1], "set-master-key"))
   {
+    unsigned char aes_key_buffer[AES_KEY_LENGTH / 8];
+    unsigned char salt[crypto_pwhash_SALTBYTES];
+    char *aes_key_base64;
+    char aes_key_hash[crypto_pwhash_STRBYTES];
+    unsigned char aes_iv_buffer[AES_BLOCK_SIZE];
+    char *aes_iv_base64;
+
     if (argc != 3)
     {
       prtusage();
       return EXIT_FAILURE;
     }
-    char *confirm = "I want to DELETE ALL passwords";
+
+    /* Confirmacion de reseteo de clave. */
     printf("Are you sure you want to set a new master key? Setting a master\n");
     printf("key means resetting the encrypted data file and thus deleting all\n");
-    printf("the passwords stored on it.\n\n");
-    printf("If you are really sure, type the following message and press [Enter]:  %s\n\n", confirm);
-    char line[MAXLN];
-    getnline(line, MAXLN);
-    if (strcmp(confirm, line)) // Confirmacion fallida.
+    printf("the passwords stored on it [Y/N]: ");
+    clrbuff();
+    if (tolower(getch()) != 'y') // Confirmacion fallida.
     {
       fprintf(stderr, "error: incorrect confirmation.\n");
       return EXIT_FAILURE;
     }
 
     /* Generando clave para AES aplicando funcion hash a password introducida por usuario. */
-    unsigned char aes_key_buffer[AES_KEY_LENGTH / 8];
-    unsigned char salt[crypto_pwhash_SALTBYTES];
     randombytes_buf(salt, sizeof(salt));
     if (crypto_pwhash(aes_key_buffer, sizeof(aes_key_buffer), argv[2], strlen(argv[2]), salt, crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE, crypto_pwhash_ALG_DEFAULT) != 0)
     {
@@ -57,8 +61,7 @@ int main(int argc, char *argv[])
     };
 
     /* Codificando clave AES de buffer binario a base64 y hasheandola en un string para guardarla en variable de entorno. */
-    const char *aes_key_base64 = serialize_buffer_to_base64(aes_key_buffer, sizeof(aes_key_buffer));
-    char aes_key_hash[crypto_pwhash_STRBYTES];
+    aes_key_base64 = serialize_buffer_to_base64(aes_key_buffer, sizeof(aes_key_buffer));
     if (crypto_pwhash_str(aes_key_hash, aes_key_base64, strlen(aes_key_base64), crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0)
     {
       fprintf(stderr, "error: there was an error derivating derivated key.\n");
@@ -66,18 +69,17 @@ int main(int argc, char *argv[])
     };
 
     /* Generando vector de inicializacion para AES. */
-    unsigned char aes_iv_buffer[AES_BLOCK_SIZE];
     RAND_bytes(aes_iv_buffer, sizeof(aes_iv_buffer));
-    const char *aes_iv_base64 = serialize_buffer_to_base64(aes_iv_buffer, sizeof(aes_iv_buffer));
+    aes_iv_base64 = serialize_buffer_to_base64(aes_iv_buffer, sizeof(aes_iv_buffer));
 
     /* Vaciando archivo de datos.  */
-    FILE *datafile = fopen(datafile_path, "w+");
-    if (datafile == NULL)
+    if (create_file(datafile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating new data file.\n");
+      fprintf(stderr, "error: there was an error resetting data file.\n");
       return EXIT_FAILURE;
     }
-    fclose(datafile);
+
+    // TODO: Continuar
 
     /* Guardando nueva clave. */
     FILE *keyfile = fopen(aes_key_base64, "w+");

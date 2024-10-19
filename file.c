@@ -4,6 +4,8 @@
 
 #define MAXPATHLENGTH 256
 
+/* TODO: Crear funcion para simplicar lectura de archivos de datos del programa.  */
+
 /* Permite obtener la ruta al directorio donde se encuentra el archivo de datos. Tras utilizarse liberar memoria con free.  */
 
 char *get_datadir_path()
@@ -21,8 +23,6 @@ char *get_datadir_path()
 
   return dirpath;
 }
-
-/* TODO: Crear funcion para simplicar lectura de archivos de datos del programa.  */
 
 /* Permite obtener la ruta al archivo de datos. Tras utilizarse liberar memoria con free. */
 char *get_datafile_path()
@@ -158,6 +158,8 @@ int setpasswd(char *passname, char *passvalue)
   return open_file_err;
 }
 
+/* --- Funciones genericas de archivos. --- */
+
 /* Retorna 1 si el directorio existe, 0 si no. */
 int direxists(char *path)
 {
@@ -206,17 +208,19 @@ int createdir(char *path)
   return 0;
 }
 
-/* Permite crear un archivo e introducir contenido en el. Si se creo correctamente devuelve 0, si no, -1. */
+/* Permite crear un archivo e introducir contenido en el al mismo tiempo. Si se creo correctamente devuelve 0, si no, -1. */
 int create_file(char *path, char *content, int content_len, int access)
 {
   struct stat st;
-  if (stat(path, &st) == 0 && !S_ISDIR(st.st_mode))
+  /* Si existe el archivo se elimina. */
+  if (filexists(path))
     if (remove(path) != 0)
       return -1;
+  /* Se crea el archivo bajo los permisos determinados. */
   int fd = open(path, O_CREAT | O_WRONLY, access);
   if (fd == -1)
     return fd;
-
+  /* En caso de que se quiera introducir contenido.  */
   if (content != NULL)
     if (write(fd, content, content_len) == -1)
       return -1;
@@ -226,8 +230,80 @@ int create_file(char *path, char *content, int content_len, int access)
   return 0;
 }
 
+/* Permite la escritura de archivos en path. Si no existe o si hay cualquier error retorna -1, si todo fue bien retorna 0. */
+int write_file(char *path, char *content, int content_len)
+{
+  int fd = open(path, O_WRONLY);
+  if (fd == -1)
+  {
+    perror("error: there was an error opening file.\n");
+    return -1;
+  }
+  if (write(fd, content, content_len) == -1)
+  {
+    perror("error: there was an error writing file.\n");
+    close(fd);
+    return -1;
+  }
+  return 0;
+}
+
+/* Permire leer el archivo path facilmente devolviendo un puntero o NULL en caso de error. */
+char *read_file(char *path, size_t *len)
+{
+  char *buffer;       // Donde se almacenara el archivo leido
+  int fd;             // Descriptor de arhivo
+  off_t buffer_size;  // Tamaño del buffer
+  ssize_t bytes_read; // Bytes leidos
+
+  /* Abrir el archivo en modo lectura. */
+  fd = open(path, O_RDONLY);
+  if (fd == -1)
+  {
+    perror("error: there was an error opening file.\n");
+    return NULL;
+  }
+  /* Obtener tamaño de buffer. */
+  buffer_size = lseek(fd, 0, SEEK_END);
+  if (buffer_size == -1)
+  {
+    perror("error: there was an error getting file size.\n");
+    close(fd);
+    return NULL;
+  }
+  if (lseek(fd, 0, SEEK_SET) == -1) // Posicionar lectura de archivo.
+  {
+    perror("error: there was an error resetting file offset.\n");
+    close(fd);
+    return NULL;
+  }
+  /* Asignando memoria. */
+  buffer = (char *)malloc(buffer_size + 1); // Fin de cadena.
+  if (buffer == NULL)
+  {
+    perror("error: there was an error allocating memory.\n");
+    close(fd);
+    return NULL;
+  }
+  /* Leer archvo en el buffer. */
+  bytes_read = read(fd, buffer, buffer_size);
+  if (bytes_read != buffer_size)
+  {
+    perror("error: there was en error reading file.\n");
+    free(buffer);
+    close(fd);
+    return NULL;
+  }
+  close(fd);
+  /* Establecer longitud de cadena. */
+  *len = buffer_size;
+  /* Fin de cadena. */
+  buffer[buffer_size] = '\0';
+  return buffer;
+}
+
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
-int verify_program_files(
+int init_program_files(
     char *datadir_path,  // Directorio donde se encuentran archivos de datos
     char *datafile_path, // Archivos de contraseñas
     char *keyfile_path,  // Archivos de clave
