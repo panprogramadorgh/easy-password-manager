@@ -6,11 +6,14 @@
 
 // TODO: Mejorar macros de tal manera que no se llamen tantas veces a las funciones.
 
+// TODO: Reemplazar fprintf(stderr, ...) com perror.
+
 /* Determina la maxima cantidad de caracteres para una ruta. */
 #define MAX_PATH_LEN 256
 
-/* Ruta almacen para macros epm.  */
-static char path[MAX_PATH_LEN];
+#define DATAFILE_NAME "epm_data.enc"
+#define KEYFILE_NAME "epm_aes_hashed_key.key"
+#define IVFILE_NAME "epm_aes_iv.key"
 
 /* Permite obtener la ruta al directorio donde se encuentran los archivos de datos. Retorna la longitud de la ruta o -1 en caso de error por desbordamiento de maxima cantidad de caracteres para ruta. */
 static int get_datadir_path(char *dirpath)
@@ -40,13 +43,6 @@ static int get_datadir_file_path(
   return snprintf(filepath + datadir_len, MAX_PATH_LEN, "/%s", rpath);
 }
 
-/* Macros epm para resolucion de rutas de archivos de datos. */
-
-#define epm_datadir_path (get_datadir_path(path), path)
-#define epm_datafile_path (get_datadir_file_path(path, "epm_data.enc"), path)
-#define epm_keyfile_path (get_datadir_file_path(path, "epm_aes_hashed_key.key"), path)
-#define epm_ivfile_path (get_datadir_file_path(path, "epm_aes_iv.key"), path)
-
 /* --- Funciones de escritura / lectura del archivo de datos. --- */
 
 /* Formatea un string de acuerdo con el formato del archivo de contraseñas. */
@@ -61,7 +57,11 @@ static void format_passwd_line(char *dest, char *passname, char *passvalue)
 /* Permite obtener una password por su nombre. La funcion retorna 1 si exsite y 0 si no exsite; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
 int getpasswd(char *passname, char *passvalue)
 {
-  char *datafile_path = get_datafile_path();
+  char datafile_path[MAX_PATH_LEN];
+  /* Manejando error de obtencion de ruta de archivo. */
+  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
+    return 0;
+
   FILE *file = fopen(datafile_path, "r");
   if (file != NULL)
   {
@@ -80,21 +80,20 @@ int getpasswd(char *passname, char *passvalue)
           while (*ch != '\n')
             *passvalue++ = *ch++;
         }
-        free(datafile_path);
         fclose(file);
         return success;
       }
     }
-    free(datafile_path);
     fclose(file);
     return not_found_err;
   }
-  free(datafile_path);
   fclose(file);
   return open_file_err;
 }
 
-/* Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna 0, si no, retorna 1. */
+/* TODO: Arreglar este desastre de funcion.
+
+Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna -1, si no, 0. */
 int setpasswd(char *passname, char *passvalue)
 {
   if (strlen(passname) > MAXPASSNAME)
@@ -102,18 +101,20 @@ int setpasswd(char *passname, char *passvalue)
   else if (strlen(passvalue) > MAXPASSVAL)
     return inv_arg_err;
 
-  char *datafile_path = get_datafile_path();
+  char datafile_path[MAX_PATH_LEN];
+  /* Manejando error de obtencion de ruta de archivo. */
+  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
+    return -1;
+
   FILE *file = fopen(datafile_path, "a");
   if (file != NULL)
   {
     char nline[MAXLN];
     format_passwd_line(nline, passname, passvalue);
     fprintf(file, "%s", nline);
-    free(datafile_path);
     fclose(file);
     return success;
   }
-  free(datafile_path);
   fclose(file);
   return open_file_err;
 }
@@ -137,7 +138,7 @@ int filexists(char *path)
 /* Permire crear todos los directorios intermedios en una ruta. */
 int createdir(char *path)
 {
-  char spath[256];
+  char spath[MAX_PATH_LEN];
   char *ch;
   int path_len;
 
@@ -265,40 +266,41 @@ char *read_file(char *path, size_t *len)
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
 int init_program_files()
 {
+  char path[MAX_PATH_LEN];
+
   /* Creacion de directorio de datos. */
-  if (!direxists(epm_datadir_path))
+  if (get_datadir_path(path) != -1 && !direxists(path))
   {
-    if (createdir(epm_datadir_path) != 0)
+    if (createdir(path) != 0)
     {
-      fprintf(stderr, "error: there was en error creating program data directory '%s'.\n", epm_datadir_path);
+      fprintf(stderr, "error: there was en error creating program data directory '%s'.\n", path);
       return -1;
     }
   }
   /* Creacion del archivo de datos. */
-  if (!filexists(epm_datafile_path))
+  if (get_datadir_file_path(path, DATAFILE_NAME) != -1 && !filexists(path))
   {
-    if (create_file(epm_datafile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", epm_datafile_path);
-      printf("%d\n", errno);
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", path);
       return -1;
     }
   }
   /* Creacion del archivo de clave. */
-  if (!filexists(epm_keyfile_path))
+  if (get_datadir_file_path(path, KEYFILE_NAME) != -1 && !filexists(path))
   {
-    if (create_file(epm_keyfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program key file '%s'.\n", epm_keyfile_path);
+      fprintf(stderr, "error: there was an error creating program key file '%s'.\n", path);
       return -1;
     }
   }
-  if (!filexists(epm_ivfile_path))
+  /* Creacion del archivo de iv. */
+  if (get_datadir_file_path(path, IVFILE_NAME) != -1 && !filexists(path))
   {
-    // Permisos de archivo 600
-    if (create_file(epm_ivfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program iv file '%s'.\n", epm_ivfile_path);
+      fprintf(stderr, "error: there was an error creating program iv file '%s'.\n", path);
       return -1;
     }
   }
