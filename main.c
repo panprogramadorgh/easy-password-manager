@@ -10,6 +10,16 @@ int main(int argc, char *argv[])
   char *datafile_path = get_datafile_path(); // Contraseñas
   char *keyfile_path = get_keyfile_path();   // Clave privada
   char *ivfile_path = get_ivfile_path();     // Vector inicializacion
+  /* Manejar error de calculo de ruta. */
+  if (!datadir_path ||
+      !datafile_path ||
+      !keyfile_path ||
+      !ivfile_path)
+  {
+    fprintf(stderr, "error: there was an error calculating data files paths.\n");
+    return EXIT_FAILURE;
+  }
+
   if (verify_program_files(datadir_path,
                            datafile_path,
                            keyfile_path,
