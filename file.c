@@ -2,95 +2,55 @@
 
 /* --- Obtencion de rutas para archivo de datos. --- */
 
-#define MAXPATHLENGTH 256
+// TODO: Actualizar todas las rutinas del archivo de acuerdo con las nuevas funciones de creacion / lectura / escritura de archivos.
 
-/* TODO: Crear funcion para simplicar lectura de archivos de datos del programa.  */
+// TODO: Mejorar macros de tal manera que no se llamen tantas veces a las funciones.
 
-/* Permite obtener la ruta al directorio donde se encuentra el archivo de datos. Tras utilizarse liberar memoria con free.  */
+/* Determina la maxima cantidad de caracteres para una ruta. */
+#define MAX_PATH_LEN 256
 
-char *get_datadir_path()
+/* Ruta almacen para macros epm.  */
+static char path[MAX_PATH_LEN];
+
+/* Permite obtener la ruta al directorio donde se encuentran los archivos de datos. Retorna la longitud de la ruta o -1 en caso de error por desbordamiento de maxima cantidad de caracteres para ruta. */
+static int get_datadir_path(char *dirpath)
 {
-  char *dirpath = (char *)malloc(MAXPATHLENGTH);
-  if (dirpath == NULL)
-    return NULL;
-
-  char *frst_chunk = getenv("HOME"); // Ej: /home/alvaro
-  char *scnd_chunk = ".local/share/epm";
-  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
-    return NULL;
-
-  snprintf(dirpath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk); // Ej: /home/alvaro/.local/share/epm
-
-  return dirpath;
+  char *home = getenv("HOME"); // /home/alvaro
+  char *rmng = ".local/share/epm";
+  /* En caso de exceso (tambien hay que contar la /) */
+  if (strlen(home) + strlen(rmng) + 1 > MAX_PATH_LEN)
+    return -1;
+  // home/alvaro/.local/share/epm
+  return snprintf(dirpath, MAX_PATH_LEN, "%s/%s", home, rmng);
 }
 
-/* Permite obtener la ruta al archivo de datos. Tras utilizarse liberar memoria con free. */
-char *get_datafile_path()
+/* Permite obtener la ruta a un archivo de datos del programa. filepath sera un buffer con al menos 256 caracteres de tamaño y rpath la ruta relativa desde el directorio de datos. La funcion retorna la longitud o -1 en caso de error. */
+static int get_datadir_file_path(
+    char *filepath,
+    char *rpath /* ruta relativa al archivo */)
 {
-  char *filepath = (char *)malloc(MAXPATHLENGTH);
-  if (filepath == NULL)
-    return NULL;
-
-  char *frst_chunk = get_datadir_path();
-  char *scnd_chunk = "data.enc";
-  if (frst_chunk == NULL)
-    return NULL;
-  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
-    return NULL;
-
-  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
-
-  free(frst_chunk); // Cerrar fugas de memoria.
-
-  return filepath;
+  /* Obtener ruta absoluta al directorio de archivos de datos. */
+  int datadir_len = get_datadir_path(filepath);
+  if (datadir_len == -1)
+    return -1;
+  /* Evitar maxima cantidad caracteres ruta (tambien cuenta la /). */
+  if (datadir_len + strlen(rpath) + 1 > MAX_PATH_LEN)
+    return -1;
+  /* Escribir la cadena formateada. */
+  return snprintf(filepath + datadir_len, MAX_PATH_LEN, "/%s", rpath);
 }
 
-char *get_keyfile_path()
-{
-  char *filepath = (char *)malloc(MAXPATHLENGTH);
-  if (filepath == NULL)
-    return NULL;
+/* Macros epm para resolucion de rutas de archivos de datos. */
 
-  char *frst_chunk = get_datadir_path();
-  char *scnd_chunk = "epm_aes_hashed_key.key";
-  if (frst_chunk == NULL)
-    return NULL;
-  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
-    return NULL;
-
-  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
-
-  free(frst_chunk); // Cerrar fugas de memoria.
-
-  return filepath;
-}
-
-char *get_ivfile_path()
-{
-  char *filepath = (char *)malloc(MAXPATHLENGTH);
-  if (filepath == NULL)
-    return NULL;
-
-  char *frst_chunk = get_datadir_path();
-  char *scnd_chunk = "epm_aes_iv.key";
-  if (frst_chunk == NULL)
-    return NULL;
-  if (strlen(frst_chunk) + strlen(scnd_chunk) > MAXPATHLENGTH)
-    return NULL;
-
-  snprintf(filepath, MAXPATHLENGTH, "%s/%s", frst_chunk, scnd_chunk);
-
-  free(frst_chunk); // Cerrar fugas de memoria.
-
-  return filepath;
-}
-
-// TODO: Normalizar nombres de rutinas.
+#define epm_datadir_path (get_datadir_path(path), path)
+#define epm_datafile_path (get_datadir_file_path(path, "epm_data.enc"), path)
+#define epm_keyfile_path (get_datadir_file_path(path, "epm_aes_hashed_key.key"), path)
+#define epm_ivfile_path (get_datadir_file_path(path, "epm_aes_iv.key"), path)
 
 /* --- Funciones de escritura / lectura del archivo de datos. --- */
 
 /* Formatea un string de acuerdo con el formato del archivo de contraseñas. */
-static void setpasswdln(char *dest, char *passname, char *passvalue)
+static void format_passwd_line(char *dest, char *passname, char *passvalue)
 {
   strcpy(dest, passname);
   strcat(dest, " ");
@@ -147,7 +107,7 @@ int setpasswd(char *passname, char *passvalue)
   if (file != NULL)
   {
     char nline[MAXLN];
-    setpasswdln(nline, passname, passvalue);
+    format_passwd_line(nline, passname, passvalue);
     fprintf(file, "%s", nline);
     free(datafile_path);
     fclose(file);
@@ -303,46 +263,42 @@ char *read_file(char *path, size_t *len)
 }
 
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
-int init_program_files(
-    char *datadir_path,  // Directorio donde se encuentran archivos de datos
-    char *datafile_path, // Archivos de contraseñas
-    char *keyfile_path,  // Archivos de clave
-    char *ivfile_path)   // Archivos de vector de inicializacion
+int init_program_files()
 {
   /* Creacion de directorio de datos. */
-  if (!direxists(datadir_path))
+  if (!direxists(epm_datadir_path))
   {
-    if (createdir(datadir_path) != 0)
+    if (createdir(epm_datadir_path) != 0)
     {
-      fprintf(stderr, "error: there was en error creating program data directory '%s'.\n", datadir_path);
+      fprintf(stderr, "error: there was en error creating program data directory '%s'.\n", epm_datadir_path);
       return -1;
     }
   }
   /* Creacion del archivo de datos. */
-  if (!filexists(datafile_path))
+  if (!filexists(epm_datafile_path))
   {
-    if (create_file(datafile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(epm_datafile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", datafile_path);
+      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", epm_datafile_path);
       printf("%d\n", errno);
       return -1;
     }
   }
   /* Creacion del archivo de clave. */
-  if (!filexists(keyfile_path))
+  if (!filexists(epm_keyfile_path))
   {
-    if (create_file(keyfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(epm_keyfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program key file '%s'.\n", datafile_path);
+      fprintf(stderr, "error: there was an error creating program key file '%s'.\n", epm_keyfile_path);
       return -1;
     }
   }
-  if (!filexists(ivfile_path))
+  if (!filexists(epm_ivfile_path))
   {
     // Permisos de archivo 600
-    if (create_file(ivfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+    if (create_file(epm_ivfile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
     {
-      fprintf(stderr, "error: there was an error creating program iv file '%s'.\n", datafile_path);
+      fprintf(stderr, "error: there was an error creating program iv file '%s'.\n", epm_ivfile_path);
       return -1;
     }
   }
