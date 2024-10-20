@@ -4,8 +4,6 @@
 
 // TODO: Actualizar todas las rutinas del archivo de acuerdo con las nuevas funciones de creacion / lectura / escritura de archivos.
 
-// TODO: Mejorar macros de tal manera que no se llamen tantas veces a las funciones.
-
 // TODO: Reemplazar fprintf(stderr, ...) com perror.
 
 /* Determina la maxima cantidad de caracteres para una ruta. */
@@ -54,41 +52,32 @@ static void format_passwd_line(char *dest, char *passname, char *passvalue)
   strcat(dest, "\n");
 }
 
-/* Permite obtener una password por su nombre. La funcion retorna 1 si exsite y 0 si no exsite; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
+/* Permite obtener una password por su nombre. La funcion retorna 0 si exsite y -1 si no exsite; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
 int getpasswd(char *passname, char *passvalue)
 {
-  char datafile_path[MAX_PATH_LEN];
+  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo
+  size_t datafile_len;              // Tamaño en bytes del archivo
+  char *datafile;                   // Archivo
+  char *fch, sch;                   // Caracter de archivo
   /* Manejando error de obtencion de ruta de archivo. */
   if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
-    return 0;
+    return -1;
+  datafile = read_file(datafile_path, &datafile_len);
 
-  FILE *file = fopen(datafile_path, "r");
-  if (file != NULL)
+  /* Imprime todas las lineas del archivo. */
+  fch = datafile - 1;
+  do
   {
-    char buff[MAXLN];
-    char *ch;
-    while (fgets(buff, MAXLN, file) != NULL)
+    fch++;
+    for (sch = fch; *fch != EOF && *fch != '\n'; fch++)
     {
-      ch = buff;
-      while (ch - buff < MAXLN && *ch != ' ')
-        ch++;
-      if (strncmp(buff, passname, ch - buff) == 0)
-      {
-        if (passvalue != NULL)
-        {
-          ch++;
-          while (*ch != '\n')
-            *passvalue++ = *ch++;
-        }
-        fclose(file);
-        return success;
-      }
     }
-    fclose(file);
-    return not_found_err;
-  }
-  fclose(file);
-  return open_file_err;
+    *fch = '\0';
+    printf("%s\n", sch);
+    *fch = '\n';
+  } while (*fch != EOF);
+
+  return 0;
 }
 
 /* TODO: Arreglar este desastre de funcion.
