@@ -19,12 +19,4 @@
 
 #define MAXLN 1024
 
-enum passwd_signals
-{
-  success,
-  inv_arg_err,
-  not_found_err,
-  open_file_err,
-};
-
 #endif

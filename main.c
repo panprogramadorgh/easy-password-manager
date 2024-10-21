@@ -98,16 +98,14 @@ int main(int argc, char *argv[])
       prtusage();
       return EXIT_FAILURE;
     }
-    if (getpasswd(argv[2], NULL) == success)
+    /* TODO: Arreglar situaciones como estas con getpasswd. Si no se encontro (lo que deberia pasar), desde dentro de la rutina se esta imprimiendo un mensaje de error. */
+    if (getpasswd(argv[2], NULL) == 0) // Si la password existe
     {
-      printf("error: password name is taken '%s'\n", argv[2]);
+      fprintf(stderr, "error: password name is taken '%s'\n", argv[2]);
       return EXIT_FAILURE;
     }
-    int signal = setpasswd(argv[2], argv[3]);
-    if (signal == inv_arg_err)
-      printf("error: to long arguments.\n");
-    else if (signal == open_file_err)
-      printf("error: read file error.\n");
+    if (setpasswd(argv[2], argv[3]) != 0)
+      return EXIT_FAILURE;
   }
   else if (argc > 1 && !strcmp(argv[1], "get-passwd"))
   {
@@ -116,14 +114,10 @@ int main(int argc, char *argv[])
       prtusage();
       return EXIT_FAILURE;
     }
-    char passvalue[MAXPASSVAL];
-    int signal = getpasswd(argv[2], passvalue);
-    if (signal == success)
-      printf("%s\n", passvalue);
-    else if (signal == not_found_err)
-      printf("error: password not found '%s'\n", argv[2]);
-    else if (signal == open_file_err)
-      printf("error: read file error.\n");
+    char password[MAX_PASSWD];
+    if (getpasswd(argv[2], password) != 0)
+      return EXIT_FAILURE;
+    printf("%s\n", password);
   }
   else
   {

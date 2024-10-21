@@ -21,6 +21,10 @@
 
 int getpasswd(char *passname, char *passvalue);
 
+int setpasswd(char *password_name, char *password);
+
+int append_file(char *path, char *content, int content_len);
+
 char *read_file(char *path, size_t *len);
 
 static int get_datadir_path(char *dirpath);
@@ -31,10 +35,13 @@ static int get_datadir_file_path(
 
 int main()
 {
-  char password[MAX_PASSWD];
-  if (getpasswd(password, "pass2") != 0)
-    return EXIT_FAILURE;
+  // if (setpasswd("pass4", "val4") != 0)
+  //   return EXIT_FAILURE;
+  // printf("Password has been created.\n");
 
+  char password[MAX_PASSWD];
+  if (getpasswd(password, "pass4") != 0)
+    return EXIT_FAILURE;
   printf("%s\n", password);
 
   return EXIT_SUCCESS;
@@ -81,6 +88,7 @@ int getpasswd(char *passwd, char *passwd_name)
     /* Manejando error por nombre demasiado largo. */
     if (lnch - slnch > MAX_PASSWD_NAME)
     {
+      free(datafile);
       errno = ENOMEM;
       perror("error: password name is to much long");
       return -1;
@@ -88,6 +96,7 @@ int getpasswd(char *passwd, char *passwd_name)
     /* Manejo de error para contraseñas sin valor. */
     else if (*lnch == '\0' || *lnch == '\n')
     {
+      free(datafile);
       errno = EILSEQ;
       perror("error: password is corrupted since it does not have any value");
       return -1;
@@ -118,6 +127,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de longitud de password. */
         if (i >= MAX_PASSWD)
         {
+          free(datafile);
           errno = ENOMEM;
           perror("error: password is corrupted, it is to much long");
           return -1;
@@ -125,11 +135,12 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
+          free(datafile);
           errno = EILSEQ;
           perror("error: password is corrupted since it contains space characters");
           return -1;
         }
-        *lnchbefcmp = ' ';
+        free(datafile);
         return 0;
       }
       else
@@ -143,6 +154,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de longitud de password. */
         if (i >= MAX_PASSWD)
         {
+          free(datafile);
           errno = ENOMEM;
           perror("error: password file is corrupted, to much long passwords where found");
           return -1;
@@ -150,6 +162,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
+          free(datafile);
           errno = EILSEQ;
           perror("error: password file is corrupted, space ending passwords where found");
           return -1;
@@ -160,9 +173,60 @@ int getpasswd(char *passwd, char *passwd_name)
     }
   } while (*slnch);
 
+  free(datafile);
   errno = EINVAL;
   perror("error: password name has not been found");
   return -1;
+}
+
+/* Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna -1, si no, 0. */
+int setpasswd(char *password_name, char *password)
+{
+  if (strlen(password_name) > MAX_PASSWD_NAME)
+  {
+    errno = EINVAL;
+    perror("error: password name is to much long");
+    return -1;
+  }
+  /* En el caso de la longitud de la contraseña, la macro hace mas bien referencia al tamaño de un arreglo en lugar de a la cantidad de caracteres validos para la contraña, lo que significa que la cantidad de caracteres admitidos es siempre inferior en 1 al valor de la macro. */
+  else if (strlen(password) >= MAX_PASSWD)
+  {
+    errno = EINVAL;
+    perror("error: password is to much long");
+    return -1;
+  }
+
+  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo
+  /* Manejando error de obtencion de ruta de archivo. */
+  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
+    return -1;
+
+  char nline[MAXLN];
+  snprintf(nline, MAXLN, "%s %s\n", password_name, password);
+
+  if (append_file(datafile_path, nline, strlen(nline)) != 0)
+    return -1;
+
+  return 0;
+}
+
+/* Permite la escritura apendices sobre archivos. Si no existe el archivo o si hay cualquier error retorna -1, si todo fue bien retorna 0. */
+int append_file(char *path, char *content, int content_len)
+{
+  int fd = open(path, O_WRONLY | O_APPEND);
+  if (fd == -1)
+  {
+    perror("error: there was an error opening file");
+    return -1;
+  }
+  if (write(fd, content, content_len) == -1)
+  {
+    perror("error: there was an error writing file");
+    close(fd);
+    return -1;
+  }
+  close(fd);
+  return 0;
 }
 
 /* Permire leer el archivo path facilmente devolviendo un puntero o NULL en caso de error. */
