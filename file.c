@@ -22,10 +22,15 @@ static int get_datadir_path(char *dirpath)
   char *home = getenv("HOME"); // /home/alvaro
   char *rmng = ".local/share/epm";
   /* En caso de exceso (tambien hay que contar la /) */
-  if (strlen(home) + strlen(rmng) + 1 > MAX_PATH_LEN)
+  if (strlen(home) + strlen(rmng) + 1 >= MAX_PATH_LEN)
+  {
+    errno = ENOMEM;
+    perror("error: max path length exceded");
     return -1;
-  // home/alvaro/.local/share/epm
-  return snprintf(dirpath, MAX_PATH_LEN, "%s/%s", home, rmng);
+  }
+  // /home/alvaro/.local/share/epm
+  snprintf(dirpath, MAX_PATH_LEN, "%s/%s", home, rmng);
+  return 0;
 }
 
 /* Permite obtener la ruta a un archivo de datos del programa. filepath sera un buffer con al menos 256 caracteres de tamaño y rpath la ruta relativa desde el directorio de datos. La funcion retorna la longitud o -1 en caso de error. */
@@ -33,15 +38,19 @@ static int get_datadir_file_path(
     char *filepath,
     char *rpath /* ruta relativa al archivo */)
 {
-  /* Obtener ruta absoluta al directorio de archivos de datos. */
-  int datadir_len = get_datadir_path(filepath);
-  if (datadir_len == -1)
+  int dirpath_len, rpath_len;
+  if (get_datadir_path(filepath) != 0)
     return -1;
-  /* Evitar maxima cantidad caracteres ruta (tambien cuenta la /). */
-  if (datadir_len + strlen(rpath) + 1 > MAX_PATH_LEN)
+  dirpath_len = strlen(filepath);
+  rpath_len = strlen(rpath);
+  if (dirpath_len + rpath_len + 1 >= MAX_PATH_LEN)
+  {
+    errno = ENOMEM;
+    perror("error: max path length exceded");
     return -1;
-  /* Escribir la cadena formateada. */
-  return snprintf(filepath + datadir_len, MAX_PATH_LEN, "/%s", rpath);
+  }
+  snprintf(filepath + dirpath_len, MAX_PATH_LEN - dirpath_len, "/%s", rpath);
+  return 0;
 }
 
 /* --- Funciones genericas de archivos. --- */
@@ -82,14 +91,21 @@ int createdir(char *path)
       *ch = '\0';
       /* Crear carpeta */
       if (mkdir(spath, 0755) != 0 && errno != EEXIST)
+      {
+        errno = EAGAIN;
+        perror("error: directory could not be created");
         return -1;
+      };
       *ch = '/';
     }
   }
-
   /* Ultimo directorio. */
   if (mkdir(spath, 0755) != 0 && errno != EEXIST)
+  {
+    errno = EAGAIN;
+    perror("error: directory could not be created");
     return -1;
+  }
 
   return 0;
 }
@@ -101,18 +117,29 @@ int create_file(char *path, char *content, int content_len, int access)
   /* Si existe el archivo se elimina. */
   if (filexists(path))
     if (remove(path) != 0)
+    {
+      errno = EAGAIN;
+      perror("error: file could not be created");
       return -1;
+    }
   /* Se crea el archivo bajo los permisos determinados. */
   int fd = open(path, O_CREAT | O_WRONLY, access);
   if (fd == -1)
-    return fd;
+  {
+    errno = EAGAIN;
+    perror("error: file could not be created");
+    return -1;
+  }
   /* En caso de que se quiera introducir contenido.  */
   if (content != NULL)
     if (write(fd, content, content_len) == -1)
+    {
+      close(fd);
+      remove(path);
+      perror("error: content could not be written in file");
       return -1;
-
+    }
   close(fd);
-
   return 0;
 }
 
@@ -162,24 +189,32 @@ char *read_file(char *path, size_t *len)
   off_t buffer_size;  // Tamaño del buffer
   ssize_t bytes_read; // Bytes leidos
 
+  /* Comprobar que la ruta pertenezca a un archivo. */
+  if (filexists(path) == 0)
+  {
+    errno = EISDIR;
+    perror("error: invalid path");
+    return NULL;
+  }
+
   /* Abrir el archivo en modo lectura. */
   fd = open(path, O_RDONLY);
   if (fd == -1)
   {
-    perror("error: there was an error opening file.\n");
+    perror("error: could not open file");
     return NULL;
   }
   /* Obtener tamaño de buffer. */
   buffer_size = lseek(fd, 0, SEEK_END);
   if (buffer_size == -1)
   {
-    perror("error: there was an error getting file size.\n");
+    perror("error: could not get file size");
     close(fd);
     return NULL;
   }
   if (lseek(fd, 0, SEEK_SET) == -1) // Posicionar lectura de archivo.
   {
-    perror("error: there was an error resetting file offset.\n");
+    perror("error: could not resset file offset");
     close(fd);
     return NULL;
   }
@@ -187,7 +222,7 @@ char *read_file(char *path, size_t *len)
   buffer = (char *)malloc(buffer_size + 1); // Fin de cadena.
   if (buffer == NULL)
   {
-    perror("error: there was an error allocating memory.\n");
+    perror("error: could not allocate memory");
     close(fd);
     return NULL;
   }
@@ -195,7 +230,7 @@ char *read_file(char *path, size_t *len)
   bytes_read = read(fd, buffer, buffer_size);
   if (bytes_read != buffer_size)
   {
-    perror("error: there was en error reading file.\n");
+    perror("error: could not read file");
     free(buffer);
     close(fd);
     return NULL;
@@ -251,13 +286,15 @@ int getpasswd(char *passwd, char *passwd_name)
     /* Manejando error por nombre demasiado largo. */
     if (lnch - slnch > MAX_PASSWD_NAME)
     {
+      free(datafile);
       errno = ENOMEM;
-      perror("error: password name is to much long");
+      perror("error: password is corrupted as its name is to much long");
       return -1;
     }
     /* Manejo de error para contraseñas sin valor. */
     else if (*lnch == '\0' || *lnch == '\n')
     {
+      free(datafile);
       errno = EILSEQ;
       perror("error: password is corrupted since it does not have any value");
       return -1;
@@ -266,6 +303,7 @@ int getpasswd(char *passwd, char *passwd_name)
     (se respete la maxima cantidad caracteres para el nombre y valor). */
     else if (*lnch == ' ')
     {
+      // TODO: Mejorar (basar en punteros)
       int i;
       char *lnchbefcmp = lnch;
 
@@ -288,6 +326,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de longitud de password. */
         if (i >= MAX_PASSWD)
         {
+          free(datafile);
           errno = ENOMEM;
           perror("error: password is corrupted, it is to much long");
           return -1;
@@ -295,11 +334,12 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
+          free(datafile);
           errno = EILSEQ;
           perror("error: password is corrupted since it contains space characters");
           return -1;
         }
-        *lnchbefcmp = ' ';
+        free(datafile);
         return 0;
       }
       else
@@ -313,6 +353,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de longitud de password. */
         if (i >= MAX_PASSWD)
         {
+          free(datafile);
           errno = ENOMEM;
           perror("error: password file is corrupted, to much long passwords where found");
           return -1;
@@ -320,6 +361,7 @@ int getpasswd(char *passwd, char *passwd_name)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
+          free(datafile);
           errno = EILSEQ;
           perror("error: password file is corrupted, space ending passwords where found");
           return -1;
@@ -330,6 +372,7 @@ int getpasswd(char *passwd, char *passwd_name)
     }
   } while (*slnch);
 
+  free(datafile);
   errno = EINVAL;
   perror("error: password name has not been found");
   return -1;
@@ -366,46 +409,133 @@ int setpasswd(char *password_name, char *password)
   return 0;
 }
 
+int rmpasswd(char *password_name)
+{
+  if (getpasswd(NULL, password_name) != 0)
+    return -1;
+
+  char datafile_path[MAX_PATH_LEN];
+  char *datafile;
+  size_t datafile_len;
+  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) != 0)
+    return -1;
+  if ((datafile = read_file(datafile_path, &datafile_len)) == NULL)
+    return -1;
+
+  char *lnch, *slnch;
+  int offset = 0;
+
+  slnch = datafile - 1;
+  do
+  {
+    slnch++;
+    for (lnch = slnch;
+         lnch - slnch < MAX_PASSWD_NAME &&       // Paso de linea por longitud de nombre
+         *lnch && *lnch != '\n' && *lnch != ' '; // Paso de linea por caracter
+         lnch++)
+      ;
+    if (lnch - slnch > MAX_PASSWD_NAME)
+    {
+      free(datafile);
+      errno = ENOMEM;
+      perror("error: password is corrupted, it is to much long");
+      return -1;
+    }
+    else if (*lnch == '\0' || *lnch == '\n')
+    {
+      free(datafile);
+      errno = EILSEQ;
+      perror("error: password is corrupted since it does not have any value");
+      return -1;
+    }
+    else if (*lnch == ' ')
+    {
+      *lnch++ = '\0';
+      char *password = lnch;
+      if (strcmp(password_name, slnch) == 0)
+      {
+        for (;
+             lnch - password < MAX_PASSWD - 1 &&
+             *lnch && *lnch != '\n' && *lnch != ' ';
+             lnch++)
+          ;
+        /* Manejando error por nombre demasiado largo. */
+        if (lnch - password >= MAX_PASSWD)
+        {
+          free(datafile);
+          errno = ENOMEM;
+          perror("error: password is corrupted, it is to much long");
+          return -1;
+        }
+        /* Manejo de error para contraseñas sin valor. */
+        else if (*lnch == ' ')
+        {
+          free(datafile);
+          errno = EILSEQ;
+          perror("error: password is corrupted since it contains space characters");
+          return -1;
+        }
+        offset = (lnch - slnch) + 1;
+
+        // TODO: Desplazar todos los caracteres del archivo a partir de cierta posicion
+      }
+      else
+      {
+        for (;
+             lnch - password < MAX_PASSWD - 1 &&
+             *lnch && *lnch != '\n' && *lnch != ' ';
+             lnch++)
+          ;
+        /* Manejando error por nombre demasiado largo. */
+        if (lnch - password >= MAX_PASSWD)
+        {
+          free(datafile);
+          errno = ENOMEM;
+          perror("error: password is corrupted, it is to much long");
+          return -1;
+        }
+        /* Manejo de error para contraseñas sin valor. */
+        else if (*lnch == ' ')
+        {
+          free(datafile);
+          errno = EILSEQ;
+          perror("error: password is corrupted since it contains space characters");
+          return -1;
+        }
+        slnch = lnch;
+      }
+    }
+  } while (*slnch && offset == 0);
+}
+
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
 int init_program_files()
 {
   char path[MAX_PATH_LEN];
 
   /* Creacion de directorio de datos. */
-  if (get_datadir_path(path) != -1 && !direxists(path))
+  if (get_datadir_path(path) == 0 && !direxists(path))
   {
     if (createdir(path) != 0)
-    {
-      fprintf(stderr, "error: there was en error creating program data directory '%s'.\n", path);
       return -1;
-    }
   }
   /* Creacion del archivo de datos. */
-  if (get_datadir_file_path(path, DATAFILE_NAME) != -1 && !filexists(path))
+  if (get_datadir_file_path(path, DATAFILE_NAME) == 0 && !filexists(path))
   {
     if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
-    {
-      fprintf(stderr, "error: there was an error creating program data file '%s'.\n", path);
       return -1;
-    }
   }
   /* Creacion del archivo de clave. */
-  if (get_datadir_file_path(path, KEYFILE_NAME) != -1 && !filexists(path))
+  if (get_datadir_file_path(path, KEYFILE_NAME) == 0 && !filexists(path))
   {
     if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
-    {
-      fprintf(stderr, "error: there was an error creating program key file '%s'.\n", path);
       return -1;
-    }
   }
   /* Creacion del archivo de iv. */
-  if (get_datadir_file_path(path, IVFILE_NAME) != -1 && !filexists(path))
+  if (get_datadir_file_path(path, IVFILE_NAME) == 0 && !filexists(path))
   {
     if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
-    {
-      fprintf(stderr, "error: there was an error creating program iv file '%s'.\n", path);
       return -1;
-    }
   }
 
   return 0;
