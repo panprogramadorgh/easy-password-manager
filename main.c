@@ -1,6 +1,8 @@
-#include "file.c"
-#include "input.c"
-#include "crypto.c"
+#include "main.h"
+#include "include/main.h"
+#include "include/crypto.h"
+#include "include/file.h"
+#include "include/input.h"
 
 // TODO: Reemplazar fprintf(stderr ... con perror
 

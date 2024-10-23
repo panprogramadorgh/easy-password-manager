@@ -1,9 +1,5 @@
-#include "main.h"
-
-#define AES_KEY_LENGTH 256
-#define AES_BLOCK_SIZE 16
-
-/* --- Funciones de cifrado con AES ---  */
+#include "../../include/main.h"
+#include "../../include/crypto.h"
 
 int encrypt(const unsigned char *plain, const int plain_len, const unsigned char *key,
             const unsigned char *iv, unsigned char *cipher)
@@ -42,9 +38,6 @@ int decrypt(const unsigned char *cipher, const int cipher_len, const unsigned ch
   return plain_len;
 }
 
-/* --- Funciones de serializacion de buffers --- */
-
-/* Serializa un buffer a una cadena de base64. Se debe liberar la memoria del puntero retornado. */
 char *serialize_buffer_to_base64(unsigned char *buffer, size_t bufflen)
 {
   BIO *bio, *b64;
@@ -72,7 +65,6 @@ char *serialize_buffer_to_base64(unsigned char *buffer, size_t bufflen)
   return b64text;
 }
 
-/* Deserializa una cadena en base64 en un buffer binario. Se debe liberar la memoria del puntero retornado. */
 unsigned char *deserialize_base64_to_buffer(const char *b64text, size_t *length)
 {
   BIO *bio, *b64;

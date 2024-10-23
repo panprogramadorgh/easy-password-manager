@@ -1,14 +1,11 @@
-#include "main.h"
-
-/* Maximo tamaño del buffer de entrada. */
-#define MAXBUFF 128
+#include "../../include/main.h"
+#include "../../include/input.h"
 
 /* Buffer de entrada. */
-static char buff[MAXBUFF];
+static char buff[MAX_BUFF];
 /* Posicion del buffer de entrada. */;
 static char *buffpos = buff;
 
-/* Retorna el ultimo caracter del buffer de entrada o en caso de estar vacio, recurre a la entrada del usuario.*/
 int getch(void)
 {
   if (buffpos - buff > 0)
@@ -16,19 +13,16 @@ int getch(void)
   return getchar();
 }
 
-/* Introduce un caracter en el buffer de entrada. */
 void ungetch(int c)
 {
   *buffpos++ = c;
 }
 
-/* Limpia por completo el buffer de entrada. */
 void clrbuff(void)
 {
   buffpos = buff;
 }
 
-/* Permite obtener una linea de entrada con n caracteres. */
 int getnline(char *line, int n)
 {
   size_t i, c;
@@ -43,7 +37,6 @@ int getnline(char *line, int n)
   *(line + i) = '\0';
 }
 
-/* Imprime las instrucciones de uso del comando. */
 void prtusage(void)
 {
   printf("Usage:\n");

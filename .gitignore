@@ -1,2 +1,9 @@
+.vscode
+build/*
 main
-passwords.txt
+libepm.a
+
+CMakeFiles
+Makefile
+cmake_install.cmake
+CMakeCache.txt
