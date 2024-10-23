@@ -2,6 +2,8 @@
 #include "input.c"
 #include "crypto.c"
 
+// TODO: Reemplazar fprintf(stderr ... con perror
+
 int main(int argc, char *argv[])
 {
   /* Rutas de archivos de datos del programa. */
@@ -22,7 +24,7 @@ int main(int argc, char *argv[])
   if (init_program_files() != 0)
     return EXIT_FAILURE;
 
-  if (argc > 1 && !strcmp(argv[1], "set-master-key"))
+  if (argc > 1 && !strcmp(argv[1], "drop"))
   {
     /* Buffers. */
     unsigned char aes_key_buffer[AES_KEY_LENGTH / 8];
@@ -43,7 +45,7 @@ int main(int argc, char *argv[])
     /* Confirmacion de reseteo de clave. */
     printf("Are you sure you want to set a new master key? Setting a master\n");
     printf("key means resetting the encrypted data file and thus deleting all\n");
-    printf("the passwords stored on it [Y/N]: ");
+    printf("the passwords stored on it [Y/N] : ");
     clrbuff();
     if (tolower(getch()) != 'y') // Confirmacion fallida.
     {
@@ -91,23 +93,49 @@ int main(int argc, char *argv[])
 
     printf("New master key for encryping data file has been stablished successfully.\n");
   }
-  else if (argc > 1 && !strcmp(argv[1], "set-passwd"))
+  else if (argc > 1 && !strcmp(argv[1], "set"))
   {
     if (argc != 4)
     {
       prtusage();
       return EXIT_FAILURE;
     }
-    /* TODO: Arreglar situaciones como estas con getpasswd. Si no se encontro (lo que deberia pasar), desde dentro de la rutina se esta imprimiendo un mensaje de error. */
-    if (getpasswd(argv[2], NULL) == 0) // Si la password existe
+    int pstate = getpasswd(NULL, argv[2], 0);
+    if (pstate == -1)
     {
-      fprintf(stderr, "error: password name is taken '%s'\n", argv[2]);
+      getpasswd(NULL, argv[2], 1);
       return EXIT_FAILURE;
     }
+    else if (pstate == 1) // Si la password existe
+    {
+      fprintf(stderr, "error: password name is already taken '%s'\n", argv[2]);
+      return EXIT_FAILURE;
+    }
+    /* pstate = 0 */
     if (setpasswd(argv[2], argv[3]) != 0)
       return EXIT_FAILURE;
   }
-  else if (argc > 1 && !strcmp(argv[1], "get-passwd"))
+  else if (argc > 1 && !strcmp(argv[1], "remove"))
+  {
+    if (argc != 3)
+    {
+      prtusage();
+      return EXIT_FAILURE;
+    }
+    printf("Are you sure do you want to remove the indicated password ?\n");
+    printf("Once the password it's deleted, you will not have any\n");
+    printf("option in order to restore it [Y/N] : ");
+    clrbuff();
+    if (tolower(getch()) != 'y')
+    {
+      printf("Remove process has been cancelled.\n");
+      return EXIT_FAILURE;
+    }
+    if (rmpasswd(argv[2]) != 0)
+      return EXIT_FAILURE;
+    printf("Remove process has been completed. '%s' was successfully removed.\n", argv[2]);
+  }
+  else if (argc > 1 && !strcmp(argv[1], "get"))
   {
     if (argc != 3)
     {
@@ -115,7 +143,7 @@ int main(int argc, char *argv[])
       return EXIT_FAILURE;
     }
     char password[MAX_PASSWD];
-    if (getpasswd(argv[2], password) != 0)
+    if (getpasswd(password, argv[2], 1) != 1)
       return EXIT_FAILURE;
     printf("%s\n", password);
   }

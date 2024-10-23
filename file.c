@@ -1,7 +1,5 @@
 #include "main.h"
 
-// TODO: Reemplazar fprintf(stderr, ...) com perror.
-
 /* --- Obtencion de rutas para archivo de datos. --- */
 
 /* Determina la maxima cantidad de caracteres para una ruta. */
@@ -24,7 +22,7 @@ static int get_datadir_path(char *dirpath)
   /* En caso de exceso (tambien hay que contar la /) */
   if (strlen(home) + strlen(rmng) + 1 >= MAX_PATH_LEN)
   {
-    errno = ENOMEM;
+    errno = ENAMETOOLONG;
     perror("error: max path length exceded");
     return -1;
   }
@@ -45,7 +43,7 @@ static int get_datadir_file_path(
   rpath_len = strlen(rpath);
   if (dirpath_len + rpath_len + 1 >= MAX_PATH_LEN)
   {
-    errno = ENOMEM;
+    errno = ENAMETOOLONG;
     perror("error: max path length exceded");
     return -1;
   }
@@ -146,7 +144,21 @@ int create_file(char *path, char *content, int content_len, int access)
 /* Permite la escritura de archivos. Si no existe el archivo o si hay cualquier error retorna -1, si todo fue bien retorna 0. */
 int write_file(char *path, char *content, int content_len)
 {
-  int fd = open(path, O_WRONLY);
+  /* Si existe el archivo se elimina, si no tira un error. */
+  if (!filexists(path))
+  {
+    errno = ENOENT;
+    perror("error: could not write content in file");
+    return -1;
+  }
+  if (remove(path) != 0)
+  {
+    errno = EAGAIN;
+    perror("error: file could not be created");
+    return -1;
+  }
+
+  int fd = open(path, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
   if (fd == -1)
   {
     perror("error: there was an error opening file");
@@ -245,8 +257,8 @@ char *read_file(char *path, size_t *len)
 
 /* --- Funciones de escritura / lectura del archivo de datos. --- */
 
-/* Permite obtener una password por su nombre. La funcion retorna 0 si exsite y -1 si no exsite; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
-int getpasswd(char *passwd, char *passwd_name)
+/* Permite obtener una password por su nombre. La funcion retorna 1 si exsite, 0 si no exsite y -1 si hay un error; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
+int getpasswd(char *passwd, char *passwd_name, int logs)
 {
   char datafile_path[MAX_PATH_LEN]; // Ruta al archivo
   size_t datafile_len;              // Tamaño en bytes del archivo
@@ -258,14 +270,16 @@ int getpasswd(char *passwd, char *passwd_name)
     if (*pwnch == ' ')
     {
       errno = EILSEQ;
-      perror("error: passwd_name cannot include the space character");
+      if (logs)
+        perror("error: passwd_name cannot include the space character");
       return -1;
     }
   /* Manejando error de obtencion de ruta de archivo. */
   if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
   {
     errno = ENOMEM;
-    perror("error: cannot calculate path to file");
+    if (logs)
+      perror("error: cannot calculate path too file");
     return -1;
   }
   /* Manejar error de lectura de archivo. */
@@ -278,57 +292,60 @@ int getpasswd(char *passwd, char *passwd_name)
   {
     slnch++; // Primer caracter de linea.
     for (lnch = slnch;
-         lnch - slnch < MAX_PASSWD_NAME && // Paso de linea por exceso de caracteres.
-         *lnch && *lnch != '\n'            // Paso de linea por fin de archivo / nueva linea.
-         && *lnch != ' ';                  // Paso de linea correcto puesto que se va a indicar a continuacion la contraseña.
+         lnch - slnch < MAX_PASSWD_NAME && // ❌
+         *lnch && *lnch != '\n'            // ❌
+         && *lnch != ' ';                  // ✔
          lnch++)
       ;
+    // TODO: Mejorar sistema de errores (aportar alguna solucion a la corrupcion).
     /* Manejando error por nombre demasiado largo. */
-    if (lnch - slnch > MAX_PASSWD_NAME)
+    if (lnch - slnch >= MAX_PASSWD_NAME)
     {
       free(datafile);
       errno = ENOMEM;
-      perror("error: password is corrupted as its name is to much long");
+      if (logs)
+        perror("error: password is corrupted as its name is too much long");
       return -1;
     }
     /* Manejo de error para contraseñas sin valor. */
     else if (*lnch == '\0' || *lnch == '\n')
     {
+      if (lnch - slnch <= 0) // Ignora contraseñas sin nombre o lineas vacias.
+        continue;
+
       free(datafile);
       errno = EILSEQ;
-      perror("error: password is corrupted since it does not have any value");
+      if (logs)
+        perror("error: password is corrupted since it does not have any value");
       return -1;
     }
-    /* En caso de que no haya un error de formato en el archivo
-    (se respete la maxima cantidad caracteres para el nombre y valor). */
-    else if (*lnch == ' ')
+    else // if (*lnch == ' ')
     {
-      // TODO: Mejorar (basar en punteros)
-      int i;
-      char *lnchbefcmp = lnch;
-
       *lnch++ = '\0';
+      char *password = lnch;
+
       /* Comparar el nombre de la contraseña. */
       if (strncmp(passwd_name, slnch, MAX_PASSWD_NAME) == 0)
       {
         /* Escribir en el arreglo del parametro el valor para la contraña. */
-        for (i = 0;
-             i < MAX_PASSWD - 1 &&                   // Paso linea por limite
+        for (;
+             lnch - password < MAX_PASSWD - 1 &&     // Paso linea por limite
              *lnch && *lnch != '\n' && *lnch != ' '; // Paso linea por caracter
-             lnch++, i++)
+             lnch++)
         {
           if (passwd != NULL)
-            passwd[i] = *lnch;
+            passwd[lnch - password] = *lnch;
         }
         if (passwd != NULL)
-          passwd[i++] = '\0';
+          passwd[lnch - password] = '\0';
 
         /* Manejando error de longitud de password. */
-        if (i >= MAX_PASSWD)
+        if (lnch - password >= MAX_PASSWD - 1)
         {
           free(datafile);
           errno = ENOMEM;
-          perror("error: password is corrupted, it is to much long");
+          if (logs)
+            perror("error: password is corrupted, it is too much long");
           return -1;
         }
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
@@ -336,26 +353,29 @@ int getpasswd(char *passwd, char *passwd_name)
         {
           free(datafile);
           errno = EILSEQ;
-          perror("error: password is corrupted since it contains space characters");
+          if (logs)
+            perror("error: password is corrupted since it contains space characters");
           return -1;
         }
+
         free(datafile);
-        return 0;
+        return 1;
       }
       else
       {
         /* Incrementando puntero para*/
-        for (i = 0;
-             i < MAX_PASSWD &&                       // Paso linea por limite
+        for (;
+             lnch - password < MAX_PASSWD - 1 &&     // Paso linea por limite
              *lnch && *lnch != '\n' && *lnch != ' '; // Paso linea por caracter
-             lnch++, i++)
+             lnch++)
           ;
         /* Manejando error de longitud de password. */
-        if (i >= MAX_PASSWD)
+        if (lnch - password >= MAX_PASSWD - 1)
         {
           free(datafile);
           errno = ENOMEM;
-          perror("error: password file is corrupted, to much long passwords where found");
+          if (logs)
+            perror("error: password file is corrupted since there are too much long passwords");
           return -1;
         }
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
@@ -363,19 +383,21 @@ int getpasswd(char *passwd, char *passwd_name)
         {
           free(datafile);
           errno = EILSEQ;
-          perror("error: password file is corrupted, space ending passwords where found");
+          if (logs)
+            perror("error: password file is corrupted since there are passwords which contains space characters");
           return -1;
         }
-        *lnchbefcmp = ' ';
         slnch = lnch;
       }
+      password[-1] = ' ';
     }
   } while (*slnch);
 
   free(datafile);
   errno = EINVAL;
-  perror("error: password name has not been found");
-  return -1;
+  if (logs)
+    perror("error: password name has not been found");
+  return 0;
 }
 
 /* Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna -1, si no, 0. */
@@ -384,14 +406,14 @@ int setpasswd(char *password_name, char *password)
   if (strlen(password_name) > MAX_PASSWD_NAME)
   {
     errno = EINVAL;
-    perror("error: password name is to much long");
+    perror("error: password name is too much long");
     return -1;
   }
   /* En el caso de la longitud de la contraseña, la macro hace mas bien referencia al tamaño de un arreglo en lugar de a la cantidad de caracteres validos para la contraña, lo que significa que la cantidad de caracteres admitidos es siempre inferior en 1 al valor de la macro. */
   else if (strlen(password) >= MAX_PASSWD)
   {
     errno = EINVAL;
-    perror("error: password is to much long");
+    perror("error: password is too much long");
     return -1;
   }
 
@@ -411,7 +433,8 @@ int setpasswd(char *password_name, char *password)
 
 int rmpasswd(char *password_name)
 {
-  if (getpasswd(NULL, password_name) != 0)
+  int pstate = getpasswd(NULL, password_name, 1);
+  if (pstate != 1) // Ya sea pq no existe o hay error
     return -1;
 
   char datafile_path[MAX_PATH_LEN];
@@ -428,84 +451,56 @@ int rmpasswd(char *password_name)
   slnch = datafile - 1;
   do
   {
+    /* Obteniendo nombre de password. */
     slnch++;
     for (lnch = slnch;
          lnch - slnch < MAX_PASSWD_NAME &&       // Paso de linea por longitud de nombre
          *lnch && *lnch != '\n' && *lnch != ' '; // Paso de linea por caracter
          lnch++)
       ;
-    if (lnch - slnch > MAX_PASSWD_NAME)
+    *lnch++ = '\0';
+    char *password = lnch;
+    if (strcmp(password_name, slnch) == 0)
     {
-      free(datafile);
-      errno = ENOMEM;
-      perror("error: password is corrupted, it is to much long");
-      return -1;
-    }
-    else if (*lnch == '\0' || *lnch == '\n')
-    {
-      free(datafile);
-      errno = EILSEQ;
-      perror("error: password is corrupted since it does not have any value");
-      return -1;
-    }
-    else if (*lnch == ' ')
-    {
-      *lnch++ = '\0';
-      char *password = lnch;
-      if (strcmp(password_name, slnch) == 0)
-      {
-        for (;
-             lnch - password < MAX_PASSWD - 1 &&
-             *lnch && *lnch != '\n' && *lnch != ' ';
-             lnch++)
-          ;
-        /* Manejando error por nombre demasiado largo. */
-        if (lnch - password >= MAX_PASSWD)
-        {
-          free(datafile);
-          errno = ENOMEM;
-          perror("error: password is corrupted, it is to much long");
-          return -1;
-        }
-        /* Manejo de error para contraseñas sin valor. */
-        else if (*lnch == ' ')
-        {
-          free(datafile);
-          errno = EILSEQ;
-          perror("error: password is corrupted since it contains space characters");
-          return -1;
-        }
-        offset = (lnch - slnch) + 1;
+      /* Desplazarse al final de la linea. */
+      for (;
+           lnch - password < MAX_PASSWD - 1 &&
+           *lnch && *lnch != '\n' && *lnch != ' ';
+           lnch++)
+        ;
+      password[-1] = ' ';
+      offset = (lnch - slnch) + 1;
 
-        // TODO: Desplazar todos los caracteres del archivo a partir de cierta posicion
-      }
-      else
-      {
-        for (;
-             lnch - password < MAX_PASSWD - 1 &&
-             *lnch && *lnch != '\n' && *lnch != ' ';
-             lnch++)
-          ;
-        /* Manejando error por nombre demasiado largo. */
-        if (lnch - password >= MAX_PASSWD)
-        {
-          free(datafile);
-          errno = ENOMEM;
-          perror("error: password is corrupted, it is to much long");
-          return -1;
-        }
-        /* Manejo de error para contraseñas sin valor. */
-        else if (*lnch == ' ')
-        {
-          free(datafile);
-          errno = EILSEQ;
-          perror("error: password is corrupted since it contains space characters");
-          return -1;
-        }
-        slnch = lnch;
-      }
+      /* Desplazar caracteres offset veces a partir de la password a eliminar.*/
+      for (lnch = slnch + offset; *lnch; lnch++)
+        lnch[-offset] = *lnch;
+      lnch[-offset] = '\0';
+
+      /* Escribir nuevo buffer en archivo. */
+      if (write_file(datafile_path, datafile, strlen(datafile)) != 0)
+        return -1;
+
+      free(datafile);
+      return 0;
+    }
+    else
+    {
+      /* Desplazarse al final de la linea. */
+      for (;
+           lnch - password < MAX_PASSWD - 1 &&
+           *lnch && *lnch != '\n' && *lnch != ' ';
+           lnch++)
+        ;
+      /* Avanzar a la siguiente linea. */
+      password[-1] = ' ';
+      slnch = lnch;
     }
   } while (*slnch && offset == 0);
+
+  free(datafile);
+  errno = EAGAIN;
+  perror("error: could not search password");
+  return -1;
 }
 
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/

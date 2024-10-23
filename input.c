@@ -31,7 +31,7 @@ void clrbuff(void)
 /* Permite obtener una linea de entrada con n caracteres. */
 int getnline(char *line, int n)
 {
-  int i, c;
+  size_t i, c;
 
   clrbuff();
   while (isspace((c = getch())))
