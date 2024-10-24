@@ -8,6 +8,15 @@
 
 int main(int argc, char *argv[])
 {
+  if (sodium_init() < 0)
+  {
+    perror("error: could not init sodium library");
+    return EXIT_FAILURE;
+  }
+
+  if (auth() != 1)
+    return EXIT_FAILURE;
+
   /* Rutas de archivos de datos del programa. */
   char datadir_path[MAX_PATH_LEN];
   char datafile_path[MAX_PATH_LEN];

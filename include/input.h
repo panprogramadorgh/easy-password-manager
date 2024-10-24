@@ -16,6 +16,9 @@ void clrbuff(void);
 /* Permite obtener una linea de entrada con n caracteres. */
 int getnline(char *line, int n);
 
+/* Permite autenticar al usuario preguntando la clave privada AES. */
+int auth();
+
 /* Imprime las instrucciones de uso del comando. */
 void prtusage(void);
 
