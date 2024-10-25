@@ -1,25 +1,31 @@
 #include <sodium.h>
 #include <string.h>
 
+#define ARAGON_HASH_BYTES 32
+
 int main()
 {
-  char inpkey[32];
-  unsigned char inpkey_hash[32];
-  unsigned char inpkey_salt[crypto_pwhash_SALTBYTES];
+  char *password = "password";
+  unsigned char first_hash[ARAGON_HASH_BYTES];
+  unsigned char seccond_hash[ARAGON_HASH_BYTES];
+  unsigned char first_salt[crypto_pwhash_SALTBYTES];
+  unsigned char seccond_salt[crypto_pwhash_SALTBYTES];
 
-  // strncpy(inpkey, "mypassword", );
-  char *test = "mypassword";
-
-  randombytes_buf(inpkey_salt, sizeof(inpkey_salt));
-
-  if (crypto_pwhash(inpkey_hash, 32, test, strlen(test), inpkey_salt, crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE, crypto_pwhash_argon2i_ALG_ARGON2I13) != 0)
+  randombytes_buf(first_salt, sizeof(first_salt));
+  if (crypto_pwhash(first_hash, sizeof(first_hash), password, strlen(password), first_salt, crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE, crypto_pwhash_ALG_DEFAULT) != 0)
   {
-    perror("error: could not authenticate");
+    perror("error: hashing error");
     return EXIT_FAILURE;
   }
 
-  for (int i = 0; i < 32; i++)
-    printf("%d\n", inpkey_hash[i]);
+  randombytes_buf(seccond_salt, sizeof(seccond_salt));
+  if (crypto_pwhash(seccond_hash, sizeof(seccond_hash), password, strlen(password), seccond_salt, crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE, crypto_pwhash_ALG_DEFAULT) != 0)
+  {
+    perror("error: hashing error");
+    return EXIT_FAILURE;
+  }
+
+  printf("%d\n", sodium_memcmp(first_hash, seccond_hash, ARAGON_HASH_BYTES));
 
   return EXIT_SUCCESS;
 }

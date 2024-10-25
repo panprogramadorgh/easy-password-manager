@@ -4,6 +4,16 @@
 /* Maximo tamaño del buffer de entrada. */
 #define MAX_BUFF 128
 
+/* Señales de retorno para auth(). */
+enum auth_signals
+{
+  auth_success,
+  auth_failure,
+  auth_error,
+  auth_nokey,
+  auth_corrupted,
+};
+
 /* Retorna el ultimo caracter del buffer de entrada o en caso de estar vacio, recurre a la entrada del usuario.*/
 int getch(void);
 
@@ -17,7 +27,7 @@ void clrbuff(void);
 int getnline(char *line, int n);
 
 /* Permite autenticar al usuario preguntando la clave privada AES. */
-int auth();
+enum auth_signals auth();
 
 /* Imprime las instrucciones de uso del comando. */
 void prtusage(void);

@@ -61,7 +61,12 @@ int setpasswd(char *password_name, char *password);
 /* Permite la eliminacion de contraseñas en el archivo de datos. */
 int rmpasswd(char *password_name);
 
+// --  Funciones de modularizacion --
+
 /* Se encarga de hacer una comprobacion de los archivos de datos del programa y de crear los que sean necesarios.*/
 int init_program_files();
+
+/* Permite la sobre-escritura de la antigua clave privada y vector de inicializacion a demas del borrado del archivo de datos. */
+int reset_private_key(char *newkey);
 
 #endif

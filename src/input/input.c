@@ -1,5 +1,6 @@
 #include "../../include/main.h"
 #include "../../include/input.h"
+#include "../../include/file.h"
 #include "../../include/crypto.h"
 
 /* Buffer de entrada. */
@@ -39,47 +40,48 @@ int getnline(char *line, int n)
   return i;
 }
 
-/*
-  TODO:
-
-  # Comprobacion de clave privada.
-
-  Leer archivo de clave, decodificar base64 en buffer binario, hashear clave introducida por el usuario (la supuesta clave privada), hashear de nuevo el hash obtenido, comparar este ultimo hash generado con el archivo de clave decodificado mediante la funcion sodium_memcpm.
-
-*/
-int auth()
+enum auth_signals auth()
 {
-  char *key = "mypassword";
-  char inpkey[32];
-  int inpkey_len;
-  unsigned char inpkey_hash[ARAGON_HASH_BYTES];
-  unsigned char key_hash[ARAGON_HASH_BYTES];
-  unsigned char key_salt[crypto_pwhash_SALTBYTES];
-  int match;
+  char *private_key;
 
-  inpkey_len = getnline(inpkey, 32);
+  char keyfile_path[MAX_PATH_LEN];
+  char *keyfile;
+  size_t keyfile_bytes;
 
-  randombytes_buf(key_salt, sizeof(key_salt));
-
-  if (crypto_pwhash(inpkey_hash, ARAGON_HASH_BYTES, inpkey, inpkey_len, key_salt, crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE, crypto_pwhash_argon2i_ALG_ARGON2I13) != 0)
+  if (get_datadir_file_path(keyfile_path, KEYFILE_NAME) != 0)
   {
     perror("error: could not authenticate");
-    return -1;
+    return auth_error;
   }
-
-  if (crypto_pwhash(key_hash, ARAGON_HASH_BYTES, key, strlen(key), key_salt, crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE, crypto_pwhash_argon2i_ALG_ARGON2I13) != 0)
+  if ((keyfile = read_file(keyfile_path, &keyfile_bytes)) == NULL)
   {
     perror("error: could not authenticate");
-    return -1;
+    return auth_error;
   }
 
-  match = sodium_memcmp(inpkey_hash, key_hash, ARAGON_HASH_BYTES) == 0;
-  if (!match)
+  if (keyfile_bytes == 0)
+    return auth_nokey;
+  if (keyfile_bytes != crypto_pwhash_STRBYTES)
+  {
+    errno = EILSEQ;
+    perror("error: could not read key data file since it is corrupted");
+    return auth_corrupted;
+  }
+
+  /* Obtener contraseña. */
+  private_key = getpass("Enter AES private key: ");
+
+  if (crypto_pwhash_str_verify(keyfile, private_key, strlen(private_key)) == -1)
   {
     errno = EACCES;
-    perror("error: password manager key is not correct");
+    perror("error: invalid private key");
+    return auth_failure;
   }
-  return match;
+
+  /* Elimina el rastro. */
+  memset(private_key, 0, strlen(private_key));
+
+  return auth_success;
 }
 
 void prtusage(void)
