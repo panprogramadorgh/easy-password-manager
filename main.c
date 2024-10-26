@@ -14,19 +14,15 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  enum auth_signals auth_state = auth();
+  char *private_key = (char *)malloc(MAXLN);
+  enum auth_signals auth_state = auth(private_key);
   if (auth_state == auth_failure ||
       auth_state == auth_error)
     return EXIT_FAILURE;
   if (auth_state == auth_nokey ||
       auth_state == auth_corrupted)
   {
-    unsigned char aes_key_hash[crypto_pwhash_STRBYTES];
-    unsigned char aes_key_iv[AES_BLOCK_SIZE];
-    char *aes_iv_base64; // Serializacion de aes_key_iv
-
-    char line[MAXLN];
-
+    char new_private_key[MAXLN];
     if (auth_state == auth_nokey)
     {
       printf("To start storing passwords, you need to set up a master\n");
@@ -39,26 +35,32 @@ int main(int argc, char *argv[])
       printf("and set a new private. Do you want to proceed ? [Y/N]: ");
       clrbuff();
       if (tolower(getch()) != 'y')
+      {
+        free(private_key);
         return EXIT_FAILURE;
+      }
     }
-    getnline(line, MAXLN);
-
-    if (reset_private_key(line) != 0)
+    getnline(new_private_key, MAXLN);
+    if (reset_private_key(new_private_key) != 0)
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
   }
 
   /* Inicializacion de archivos de datos del programa. */
   if (init_program_files() != 0)
-    return EXIT_FAILURE;
-
-  if (argc > 1 && !strcmp(argv[1], "drop"))
   {
-    unsigned char aes_key_hash[crypto_pwhash_STRBYTES];
-    unsigned char aes_key_iv[AES_BLOCK_SIZE];
-    char *aes_iv_base64; // Serializacion de aes_key_iv
+    free(private_key);
+    return EXIT_FAILURE;
+  }
+
+  if (argc > 1 && !strcmp(argv[1], "reset"))
+  {
     if (argc != 3)
     {
       prtusage();
+      free(private_key);
       return EXIT_FAILURE;
     }
 
@@ -68,37 +70,53 @@ int main(int argc, char *argv[])
     printf("the passwords stored on it [Y/N] : ");
     clrbuff();
     if (tolower(getch()) != 'y') // Confirmacion fallida.
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
     if (reset_private_key(argv[2]) != 0)
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
   }
   else if (argc > 1 && !strcmp(argv[1], "set"))
   {
     if (argc != 4)
     {
       prtusage();
+      free(private_key);
       return EXIT_FAILURE;
     }
-    int pstate = getpasswd(NULL, argv[2], 0);
-    if (pstate == -1)
-    {
-      getpasswd(NULL, argv[2], 1);
-      return EXIT_FAILURE;
-    }
-    else if (pstate == 1) // Si la password existe
-    {
-      fprintf(stderr, "error: password name is already taken '%s'\n", argv[2]);
-      return EXIT_FAILURE;
-    }
+    // int pstate = getpasswd(NULL, argv[2], private_key, 0);
+    // if (pstate == -1)
+    // {
+    //   getpasswd(NULL, argv[2], private_key, 1);
+    //   free(private_key);
+    //   return EXIT_FAILURE;
+    // }
+    // else if (pstate == 1) // Si la password existe
+    // {
+    //   errno = EINVAL;
+    //   perror("error: password name is already taken");
+    //   free(private_key);
+    //   return EXIT_FAILURE;
+    // }
     /* pstate = 0 */
-    if (setpasswd(argv[2], argv[3]) != 0)
+    if (setpasswd(argv[2], argv[3], private_key) != 0)
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
+
+    printf("Password '%s' has been stablished.\n", argv[2]);
   }
   else if (argc > 1 && !strcmp(argv[1], "remove"))
   {
     if (argc != 3)
     {
       prtusage();
+      free(private_key);
       return EXIT_FAILURE;
     }
     printf("Are you sure do you want to remove the indicated password ?\n");
@@ -106,9 +124,15 @@ int main(int argc, char *argv[])
     printf("option in order to restore it [Y/N] : ");
     clrbuff();
     if (tolower(getch()) != 'y')
+    {
+      free(private_key);
       return EXIT_FAILURE;
-    if (rmpasswd(argv[2]) != 0)
+    }
+    if (rmpasswd(argv[2], private_key) != 0)
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
     printf("Remove process has been completed. '%s' was successfully removed.\n", argv[2]);
   }
   else if (argc > 1 && !strcmp(argv[1], "get"))
@@ -116,18 +140,24 @@ int main(int argc, char *argv[])
     if (argc != 3)
     {
       prtusage();
+      free(private_key);
       return EXIT_FAILURE;
     }
     char password[MAX_PASSWD];
-    if (getpasswd(password, argv[2], 1) != 1)
+    if (getpasswd(password, argv[2], private_key, 1) != 1)
+    {
+      free(private_key);
       return EXIT_FAILURE;
+    }
     printf("%s\n", password);
   }
   else
   {
+    free(private_key);
     prtusage();
     return EXIT_FAILURE;
   }
 
+  free(private_key);
   return EXIT_SUCCESS;
 }

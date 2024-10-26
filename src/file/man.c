@@ -1,12 +1,25 @@
 #include "../../include/main.h"
 #include "../../include/file.h"
+#include "../../include/crypto.h"
 
-int getpasswd(char *passwd, char *passwd_name, int logs)
+int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
 {
-  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo
-  size_t datafile_len;              // Tamaño en bytes del archivo
-  char *datafile;                   // Archivo
-  char *slnch, *lnch;               // Caracteres de archivo
+  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo de datos
+  char ivfile_path[MAX_PATH_LEN];   // Ruta al archivo de iv
+
+  char
+      *iv_base64,
+      *iv_buffer,
+      *datafile,
+      *enc_datafile,
+      *enc_datafile_base64;
+  size_t
+      iv_base64_len,
+      iv_buffer_len,
+      enc_datafile_len,
+      enc_datafile_base64_len;
+
+  char *slnch, *lnch; // Caracteres de archivo
 
   /* Manejar error por espacios en passwd_name. */
   for (char *pwnch = passwd_name; *pwnch; pwnch++)
@@ -25,9 +38,41 @@ int getpasswd(char *passwd, char *passwd_name, int logs)
       perror("error: cannot calculate path too file");
     return -1;
   }
-  /* Manejar error de lectura de archivo. */
-  if ((datafile = read_file(datafile_path, &datafile_len)) == NULL)
+  if (get_datadir_file_path(ivfile_path, IVFILE_NAME) == -1)
+  {
+    errno = ENOMEM;
+    if (logs)
+      perror("error: cannot calculate path too file");
     return -1;
+  }
+
+  /* Manejar error de lectura de archivos. */
+  if ((enc_datafile_base64 = read_file(datafile_path, &enc_datafile_base64_len)) == NULL)
+    return -1;
+  if ((iv_base64 = read_file(ivfile_path, &iv_base64_len)) == NULL)
+    return -1;
+
+  /* Deserializando archivo de datos a binary buffer. */
+  enc_datafile = deserialize_base64_to_buffer(enc_datafile_base64, &enc_datafile_len);
+
+  /* Deserializando base64 en buffer de iv. */
+  iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
+
+  /* Asignar memoria dinamica suficiente para el texto plano. */
+  datafile = (char *)malloc(enc_datafile_len + AES_BLOCK_SIZE + MAXLN);
+  if (datafile == NULL)
+  {
+    perror("error: colud not allocate memory");
+    return -1;
+  }
+
+  /* Desencriptar archivo de datos. */
+  decrypt(enc_datafile, enc_datafile_len, private_key, iv_buffer, datafile);
+
+  free(enc_datafile_base64);
+  free(enc_datafile);
+  free(iv_base64);
+  free(iv_buffer);
 
   /* Iterar sobre cada linea. */
   slnch = datafile - 1;
@@ -143,39 +188,117 @@ int getpasswd(char *passwd, char *passwd_name, int logs)
   return 0;
 }
 
-int setpasswd(char *password_name, char *password)
+int setpasswd(char *password_name, char *password, char *private_key)
 {
-  if (strlen(password_name) > MAX_PASSWD_NAME)
+  size_t password_name_len, password_len;
+  if ((password_name_len = strlen(password_name)) > MAX_PASSWD_NAME)
   {
     errno = EINVAL;
     perror("error: password name is too much long");
     return -1;
   }
   /* En el caso de la longitud de la contraseña, la macro hace mas bien referencia al tamaño de un arreglo en lugar de a la cantidad de caracteres validos para la contraña, lo que significa que la cantidad de caracteres admitidos es siempre inferior en 1 al valor de la macro. */
-  else if (strlen(password) >= MAX_PASSWD)
+  else if ((password_len = strlen(password)) >= MAX_PASSWD)
   {
     errno = EINVAL;
     perror("error: password is too much long");
     return -1;
   }
 
-  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo
+  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo de datos
+  char ivfile_path[MAX_PATH_LEN];   // Ruta al archivo de iv
+
+  // TODO: Minizar uso de bloques de memoria diferentes en lugar de redimensionarlos.
+
+  char
+      *iv_base64,
+      *iv_buffer,
+      *datafile,
+      *enc_datafile,
+      *new_enc_datafile,
+      *enc_datafile_base64,
+      *new_enc_datafile_base64;
+
+  size_t
+      iv_base64_len,
+      iv_buffer_len,
+      datafile_len,
+      enc_datafile_len,
+      new_enc_datafile_len,
+      enc_datafile_base64_len,
+      new_enc_datafile_base64_len;
+
   /* Manejando error de obtencion de ruta de archivo. */
   if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
     return -1;
-
-  char nline[MAXLN];
-  snprintf(nline, MAXLN, "%s %s\n", password_name, password);
-
-  if (append_file(datafile_path, nline, strlen(nline)) != 0)
+  if (get_datadir_file_path(ivfile_path, IVFILE_NAME) == -1)
     return -1;
 
+  /* Manejar error de lectura de archivos. */
+  if ((enc_datafile_base64 = read_file(datafile_path, &enc_datafile_base64_len)) == NULL)
+    return -1;
+  if ((iv_base64 = read_file(ivfile_path, &iv_base64_len)) == NULL)
+    return -1;
+
+  /* Deserializar archivo de datos en binary buffer. */
+  enc_datafile = deserialize_base64_to_buffer(enc_datafile_base64, &enc_datafile_len);
+
+  /* Deserializar iv en base64 a binary buffer. */
+  iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
+
+  /* Asignar memoria dinamica suficiente para el texto plano. Se hace mas grande como sea necesario para albergar una linea mas.*/
+  datafile = (char *)malloc(enc_datafile_len + AES_BLOCK_SIZE + MAXLN);
+  if (datafile == NULL)
+  {
+    perror("error: colud not allocate memory");
+    return -1;
+  }
+
+  /* Desencriptar archivo de datos en texto plano. */
+  decrypt(enc_datafile, enc_datafile_len, private_key, iv_buffer, datafile);
+
+  /* Obtener longitud del texto plano. */
+  datafile_len = strlen(datafile);
+
+  /* Introducir linea en texto plano. */
+  snprintf(datafile + datafile_len, MAXLN, "%s %s\n", password_name, password);
+  datafile_len = strlen(datafile);
+
+  /* Asignar memoria dinamica para nuevo archivo encriptado. */
+  new_enc_datafile = (char *)malloc(datafile_len + AES_BLOCK_SIZE);
+  if (new_enc_datafile == NULL)
+  {
+    perror("error: colud not allocate memory");
+    return -1;
+  }
+
+  // Volver a encriptar y guardar archivo
+  new_enc_datafile_len = encrypt(datafile, datafile_len, private_key, iv_buffer, new_enc_datafile);
+
+  /* Serializacion de buffer cifrado. */
+  new_enc_datafile_base64 = serialize_buffer_to_base64(new_enc_datafile, new_enc_datafile_len);
+  new_enc_datafile_base64_len = strlen(new_enc_datafile_base64);
+
+  free(new_enc_datafile);
+  free(enc_datafile);
+  free(datafile);
+  free(iv_base64);
+  free(iv_buffer);
+
+  if (write_file(datafile_path, new_enc_datafile_base64, new_enc_datafile_base64_len) != 0)
+  {
+    free(new_enc_datafile_base64);
+    return -1;
+  }
+
+  free(new_enc_datafile_base64);
   return 0;
 }
 
-int rmpasswd(char *password_name)
+// TODO: Terminar implementar con criptografia
+int rmpasswd(char *password_name, char *private_key)
 {
-  int pstate = getpasswd(NULL, password_name, 1);
+  int pstate = getpasswd(NULL, password_name, private_key, 1);
   if (pstate != 1) // Ya sea pq no existe o hay error
     return -1;
 

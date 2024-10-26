@@ -53,13 +53,13 @@ int append_file(char *path, char *content, int content_len);
 char *read_file(char *path, size_t *len);
 
 /* Permite obtener una password por su nombre. La funcion retorna 1 si exsite, 0 si no exsite y -1 si hay un error; ademas, si passvalue es diferente de NULL, en el guardara la contraseña. */
-int getpasswd(char *passwd, char *passwd_name, int logs);
+int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs);
 
 /* Permite establecer una nueva entrada en el archivo de contraseñas. Si hay un error retorna -1, si no, 0. */
-int setpasswd(char *password_name, char *password);
+int setpasswd(char *password_name, char *password, char *private_key);
 
 /* Permite la eliminacion de contraseñas en el archivo de datos. */
-int rmpasswd(char *password_name);
+int rmpasswd(char *password_name, char *private_key);
 
 // --  Funciones de modularizacion --
 

@@ -40,9 +40,9 @@ int getnline(char *line, int n)
   return i;
 }
 
-enum auth_signals auth()
+enum auth_signals auth(char *private_key)
 {
-  char *private_key;
+  char *input;
 
   char keyfile_path[MAX_PATH_LEN];
   char *keyfile;
@@ -69,17 +69,20 @@ enum auth_signals auth()
   }
 
   /* Obtener contraseña. */
-  private_key = getpass("Enter AES private key: ");
+  input = getpass("Enter AES private key: ");
 
-  if (crypto_pwhash_str_verify(keyfile, private_key, strlen(private_key)) == -1)
+  if (crypto_pwhash_str_verify(keyfile, input, strlen(input)) == -1)
   {
     errno = EACCES;
     perror("error: invalid private key");
     return auth_failure;
   }
 
-  /* Elimina el rastro. */
-  memset(private_key, 0, strlen(private_key));
+  /* Copia la clave en el array parametro, el cual debe ser memoria dinamica para mayor seguridad. */
+  strncpy(private_key, input, MAXLN);
+
+  /* Elimina el rastro de memoria de pila. */
+  memset(input, 0, strlen(input));
 
   return auth_success;
 }

@@ -27,7 +27,7 @@ void clrbuff(void);
 int getnline(char *line, int n);
 
 /* Permite autenticar al usuario preguntando la clave privada AES. */
-enum auth_signals auth();
+enum auth_signals auth(char *private_key);
 
 /* Imprime las instrucciones de uso del comando. */
 void prtusage(void);
