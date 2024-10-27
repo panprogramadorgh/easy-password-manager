@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
   if (init_program_files() != 0)
     return EXIT_FAILURE;
 
-  char *private_key = (char *)malloc(MAXLN);
+  char *private_key = (char *)malloc(AES_KEY_LENGTH / 8); // Caracter nulo
   enum auth_signals auth_state = auth(private_key);
   if (auth_state == auth_failure ||
       auth_state == auth_error)

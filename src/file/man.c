@@ -59,7 +59,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
   iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
 
   /* Asignar memoria dinamica suficiente para el texto plano. */
-  datafile = (char *)malloc(enc_datafile_len + AES_BLOCK_SIZE + MAXLN);
+  datafile = (char *)malloc(enc_datafile_len);
   if (datafile == NULL)
   {
     perror("error: colud not allocate memory");
@@ -262,7 +262,7 @@ int setpasswd(char *password_name, char *password, char *private_key)
   iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
 
   /* Asignar memoria dinamica suficiente para el texto plano. Se hace mas grande como sea necesario para albergar una linea mas.*/
-  datafile = (char *)malloc(enc_datafile_len + AES_BLOCK_SIZE + MAXLN);
+  datafile = (char *)malloc(enc_datafile_len + MAXLN);
   if (datafile == NULL)
   {
     perror("error: colud not allocate memory");
@@ -280,7 +280,7 @@ int setpasswd(char *password_name, char *password, char *private_key)
   datafile_len = strlen(datafile);
 
   /* Asignar memoria dinamica para nuevo archivo encriptado. */
-  new_enc_datafile = (char *)malloc(datafile_len + AES_BLOCK_SIZE);
+  new_enc_datafile = (char *)malloc(datafile_len + AES_BLOCK_SIZE - (datafile_len % 16));
   if (new_enc_datafile == NULL)
   {
     perror("error: colud not allocate memory");
@@ -354,7 +354,7 @@ int rmpasswd(char *password_name, char *private_key)
   iv = deserialize_base64_to_buffer(iv_base64, &iv_len);
 
   /* Asignar bloque de memoria en donde guardar texto plano. */
-  data = (char *)malloc(enc_data_len + AES_BLOCK_SIZE);
+  data = (char *)malloc(enc_data_len);
   if (data == NULL)
   {
     perror("error: could not remove password");
@@ -404,7 +404,7 @@ int rmpasswd(char *password_name, char *private_key)
       data_len = strlen(data);
 
       /* Nuevos datos encriptados en buffer binario. */
-      new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE);
+      new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
 
       /* Encriptar nuevos datosen buffer binaio. */
       encrypt(data, data_len, private_key, iv, new_enc_data);
