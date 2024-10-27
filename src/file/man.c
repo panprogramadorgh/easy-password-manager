@@ -190,6 +190,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
 
 int setpasswd(char *password_name, char *password, char *private_key)
 {
+  /* Errores de formato de contraseña. */
   size_t password_name_len, password_len;
   if ((password_name_len = strlen(password_name)) > MAX_PASSWD_NAME)
   {
@@ -202,6 +203,20 @@ int setpasswd(char *password_name, char *password, char *private_key)
   {
     errno = EINVAL;
     perror("error: password is too much long");
+    return -1;
+  }
+
+  /* Error de duplicidad de contraseña. */
+  int pstate = getpasswd(NULL, password_name, private_key, 0);
+  if (pstate == -1)
+  {
+    getpasswd(NULL, password_name, private_key, 1);
+    return -1;
+  }
+  else if (pstate == 1) // Si la password existe
+  {
+    errno = EINVAL;
+    perror("error: password name is already taken");
     return -1;
   }
 
@@ -295,25 +310,69 @@ int setpasswd(char *password_name, char *password, char *private_key)
   return 0;
 }
 
-// TODO: Terminar implementar con criptografia
 int rmpasswd(char *password_name, char *private_key)
 {
   int pstate = getpasswd(NULL, password_name, private_key, 1);
   if (pstate != 1) // Ya sea pq no existe o hay error
     return -1;
 
-  char datafile_path[MAX_PATH_LEN];
-  char *datafile;
-  size_t datafile_len;
-  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) != 0)
+  char data_path[MAX_PATH_LEN];
+  char iv_path[MAX_PATH_LEN];
+
+  char
+      *enc_data_base64,
+      *enc_data, // binary buffer
+      *new_enc_data,
+      *new_enc_data_base64,
+      *data,
+      *iv_base64,
+      *iv;
+  size_t
+      enc_data_base64_len,
+      enc_data_len,
+      new_enc_data_len,
+      new_enc_data_base64_len,
+      data_len,
+      iv_base64_len,
+      iv_len;
+
+  if (get_datadir_file_path(data_path, DATAFILE_NAME) != 0)
     return -1;
-  if ((datafile = read_file(datafile_path, &datafile_len)) == NULL)
+  if (get_datadir_file_path(iv_path, IVFILE_NAME) != 0)
     return -1;
 
-  char *lnch, *slnch;
+  if ((enc_data_base64 = read_file(data_path, &enc_data_base64_len)) == NULL)
+    return -1;
+  if ((iv_base64 = read_file(iv_path, &iv_base64_len)) == NULL)
+  {
+    free(enc_data_base64);
+    return -1;
+  }
+
+  /* Deserializar datos en buffer binario. */
+  enc_data = deserialize_base64_to_buffer(enc_data_base64, &enc_data_len);
+  iv = deserialize_base64_to_buffer(iv_base64, &iv_len);
+
+  /* Asignar bloque de memoria en donde guardar texto plano. */
+  data = (char *)malloc(enc_data_len + AES_BLOCK_SIZE);
+  if (data == NULL)
+  {
+    perror("error: could not remove password");
+    return -1;
+  }
+
+  /* Desencriptar buffer. */
+  decrypt(enc_data, enc_data_len, private_key, iv, data);
+
+  free(enc_data_base64);
+  free(enc_data);
+  free(iv_base64);
+
+  char *lnch,
+      *slnch;
   int offset = 0;
 
-  slnch = datafile - 1;
+  slnch = data - 1;
   do
   {
     /* Obteniendo nombre de password. */
@@ -341,11 +400,34 @@ int rmpasswd(char *password_name, char *private_key)
         lnch[-offset] = *lnch;
       lnch[-offset] = '\0';
 
-      /* Escribir nuevo buffer en archivo. */
-      if (write_file(datafile_path, datafile, strlen(datafile)) != 0)
-        return -1;
+      /* Obtener nueva longitud de datos. */
+      data_len = strlen(data);
 
-      free(datafile);
+      /* Nuevos datos encriptados en buffer binario. */
+      new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE);
+
+      /* Encriptar nuevos datosen buffer binaio. */
+      encrypt(data, data_len, private_key, iv, new_enc_data);
+      new_enc_data_len = strlen(new_enc_data);
+
+      /* Serializar nuevos datos encriptadose en base64. */
+      new_enc_data_base64 = serialize_buffer_to_base64(new_enc_data, new_enc_data_len);
+      new_enc_data_base64_len = strlen(new_enc_data_base64);
+
+      /* Escribir nuevo buffer en archivo. */
+      if (write_file(data_path, new_enc_data_base64, new_enc_data_base64_len) != 0)
+      {
+        free(data);
+        free(new_enc_data_base64);
+        free(new_enc_data);
+        free(iv);
+        return -1;
+      }
+
+      free(data);
+      free(new_enc_data_base64);
+      free(new_enc_data);
+      free(iv);
       return 0;
     }
     else
@@ -362,7 +444,7 @@ int rmpasswd(char *password_name, char *private_key)
     }
   } while (*slnch && offset == 0);
 
-  free(datafile);
+  free(data);
   errno = EAGAIN;
   perror("error: could not search password");
   return -1;

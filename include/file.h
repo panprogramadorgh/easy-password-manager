@@ -10,7 +10,8 @@
 
 /* Nombres de archivos de datos. */
 #define DATAFILE_NAME "epm_data.enc"
-#define KEYFILE_NAME "epm_aes_hashed_key.key"
+#define KEYFILE_NAME "epm_aes_key.key"
+#define KEYSLTFILE_NAME "epm_aes_key_salt.key"
 #define IVFILE_NAME "epm_aes_iv.key"
 
 /* Determina la maxima longitud de linea. */

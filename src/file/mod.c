@@ -25,6 +25,12 @@ int init_program_files()
     if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
       return -1;
   }
+  /* Creacion del archivo de salt de clave. */
+  if (get_datadir_file_path(path, KEYSLTFILE_NAME) == 0 && !filexists(path))
+  {
+    if (create_file(path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+      return -1;
+  }
   /* Creacion del archivo de iv. */
   if (get_datadir_file_path(path, IVFILE_NAME) == 0 && !filexists(path))
   {
@@ -37,54 +43,82 @@ int init_program_files()
 
 int reset_private_key(char *newkey)
 {
-  char datafile_path[MAX_PATH_LEN];
-  char keyfile_path[MAX_PATH_LEN];
-  char ivfile_path[MAX_PATH_LEN];
+  char data_path[MAX_PATH_LEN];
+  char key_path[MAX_PATH_LEN];
+  char keysalt_path[MAX_PATH_LEN];
+  char iv_path[MAX_PATH_LEN];
   if (
-      get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1 ||
-      get_datadir_file_path(keyfile_path, KEYFILE_NAME) == -1 ||
-      get_datadir_file_path(ivfile_path, IVFILE_NAME) == -1)
+      get_datadir_file_path(data_path, DATAFILE_NAME) == -1 ||
+      get_datadir_file_path(key_path, KEYFILE_NAME) == -1 ||
+      get_datadir_file_path(keysalt_path, KEYSLTFILE_NAME) == -1 ||
+      get_datadir_file_path(iv_path, IVFILE_NAME) == -1)
   {
-    fprintf(stderr, "error: there was an error calculating program data files paths.\n");
+    perror("error: could not stablish new private key");
     return -1;
   }
 
-  unsigned char aes_key_hash[crypto_pwhash_STRBYTES];
-  unsigned char aes_key_iv[AES_BLOCK_SIZE];
-  char *aes_iv_base64; // Serializacion de aes_key_iv
+  unsigned char key[crypto_pwhash_STRBYTES];
+  unsigned char salt[crypto_pwhash_SALTBYTES];
+  unsigned char iv[AES_BLOCK_SIZE];
+  char *salt_base64;
+  char *iv_base64; // Serializacion de iv
 
   /* Generando hash de cadena aragon. */
-  if (crypto_pwhash_str(aes_key_hash, newkey, strlen(newkey), crypto_pwhash_OPSLIMIT_SENSITIVE, crypto_pwhash_MEMLIMIT_SENSITIVE) != 0)
+  if (crypto_pwhash_str(key, newkey, strlen(newkey), crypto_pwhash_OPSLIMIT_SENSITIVE, crypto_pwhash_MEMLIMIT_SENSITIVE) != 0)
   {
-    perror("error: could not implement hashing algorithm");
+    perror("error: could not stablish new private key");
     return -1;
   }
 
+  /* Generando salt para clave AES. */
+  randombytes_buf(salt, sizeof(salt));
+  salt_base64 = serialize_buffer_to_base64(salt, sizeof(salt));
+
   /* Generando vector de inicializacion para AES. */
-  RAND_bytes(aes_key_iv, sizeof(aes_key_iv));
-  aes_iv_base64 = serialize_buffer_to_base64(aes_key_iv, sizeof(aes_key_iv));
+  randombytes_buf(iv, sizeof(iv));
+  iv_base64 = serialize_buffer_to_base64(iv, sizeof(iv));
 
   /* Vaciando archivo de datos.  */
-  if (create_file(datafile_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
+  if (create_file(data_path, NULL, 0, S_IRUSR | S_IWUSR) != 0)
   {
-    fprintf(stderr, "error: there was an error resetting data file.\n");
+    perror("error: could not stablish new private key");
+    free(salt_base64);
+    free(iv_base64);
     return -1;
   }
 
   /* Guardando nueva clave hasheada. */
-  if (write_file(keyfile_path, aes_key_hash, crypto_pwhash_STRBYTES) != 0)
-    return -1;
-
-  /* Guardando nuevo vector de inicializacion. */
-  if (write_file(ivfile_path, aes_iv_base64, strlen(aes_iv_base64)) != 0)
+  if (write_file(key_path, key, crypto_pwhash_STRBYTES) != 0)
   {
-    write_file(keyfile_path, "", 0); // Vaciar clave en caso de error.
+    free(salt_base64);
+    free(iv_base64);
     return -1;
   }
-  free(aes_iv_base64); // Liberar memoria
+
+  /* Guardando nuevo salt para clave AES. */
+  if (write_file(keysalt_path, salt_base64, strlen(salt_base64)) != 0)
+  {
+    write_file(key_path, "", 0);
+    free(salt_base64);
+    free(iv_base64);
+    return -1;
+  }
+
+  /* Guardando nuevo vector de inicializacion. */
+  if (write_file(iv_path, iv_base64, strlen(iv_base64)) != 0)
+  {
+    write_file(key_path, "", 0);
+    write_file(keysalt_path, "", 0);
+    free(salt_base64);
+    free(iv_base64);
+    return -1;
+  }
+
+  free(salt_base64);
+  free(iv_base64);
 
   printf("New master key for encryping data file has been stablished successfully.\n");
-  printf("%s\n", aes_key_hash);
+  printf("%s\n", key);
 
   return 0;
 }

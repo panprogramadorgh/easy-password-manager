@@ -14,6 +14,10 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  /* Inicializacion de archivos de datos del programa. */
+  if (init_program_files() != 0)
+    return EXIT_FAILURE;
+
   char *private_key = (char *)malloc(MAXLN);
   enum auth_signals auth_state = auth(private_key);
   if (auth_state == auth_failure ||
@@ -46,13 +50,6 @@ int main(int argc, char *argv[])
       free(private_key);
       return EXIT_FAILURE;
     }
-  }
-
-  /* Inicializacion de archivos de datos del programa. */
-  if (init_program_files() != 0)
-  {
-    free(private_key);
-    return EXIT_FAILURE;
   }
 
   if (argc > 1 && !strcmp(argv[1], "reset"))
@@ -88,20 +85,6 @@ int main(int argc, char *argv[])
       free(private_key);
       return EXIT_FAILURE;
     }
-    // int pstate = getpasswd(NULL, argv[2], private_key, 0);
-    // if (pstate == -1)
-    // {
-    //   getpasswd(NULL, argv[2], private_key, 1);
-    //   free(private_key);
-    //   return EXIT_FAILURE;
-    // }
-    // else if (pstate == 1) // Si la password existe
-    // {
-    //   errno = EINVAL;
-    //   perror("error: password name is already taken");
-    //   free(private_key);
-    //   return EXIT_FAILURE;
-    // }
     /* pstate = 0 */
     if (setpasswd(argv[2], argv[3], private_key) != 0)
     {

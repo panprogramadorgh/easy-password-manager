@@ -40,6 +40,7 @@ int getnline(char *line, int n)
   return i;
 }
 
+/* TODO: Derivar private_key */
 enum auth_signals auth(char *private_key)
 {
   char *input;
@@ -87,6 +88,7 @@ enum auth_signals auth(char *private_key)
   return auth_success;
 }
 
+/* TODO: Terminar */
 void prtusage(void)
 {
   printf("Usage:\n");
