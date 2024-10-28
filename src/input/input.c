@@ -130,10 +130,12 @@ enum auth_signals auth(char *private_key) // Mem blocks size: AES_KEY_LENGTH / 8
   return auth_success;
 }
 
-/* TODO: Terminar */
 void prtusage(void)
 {
+  printf("In order to proceed with any operation, master encryption key will be asked.\n");
   printf("Usage:\n");
-  printf("\t- get-passwd <password name>\n");
-  printf("\t- set-passwd <password name> <password>\n");
+  printf("\tget <password name>              Allows to get some password value\n");
+  printf("\tset <password name> <password>   Allows to store new passwords\n");
+  printf("\tremove <password name>           Allows to remove passwords\n");
+  printf("\treset <new key>                  Allows to remove all passwords and set a new master key\n");
 }
