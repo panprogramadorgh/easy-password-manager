@@ -9,15 +9,15 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
 
   char
       *iv_base64,
-      *iv_buffer,
-      *datafile,
-      *enc_datafile,
-      *enc_datafile_base64;
+      *iv,
+      *data,
+      *enc_data,
+      *enc_data_base64;
   size_t
       iv_base64_len,
-      iv_buffer_len,
-      enc_datafile_len,
-      enc_datafile_base64_len;
+      iv_len,
+      enc_data_len,
+      enc_data_base64_len;
 
   char *slnch, *lnch; // Caracteres de archivo
 
@@ -47,35 +47,49 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
   }
 
   /* Manejar error de lectura de archivos. */
-  if ((enc_datafile_base64 = read_file(datafile_path, &enc_datafile_base64_len)) == NULL)
+  if ((enc_data_base64 = read_file(datafile_path, &enc_data_base64_len)) == NULL)
     return -1;
   if ((iv_base64 = read_file(ivfile_path, &iv_base64_len)) == NULL)
     return -1;
 
   /* Deserializando archivo de datos a binary buffer. */
-  enc_datafile = deserialize_base64_to_buffer(enc_datafile_base64, &enc_datafile_len);
+  enc_data = deserialize_base64_to_buffer(enc_data_base64, &enc_data_len);
 
   /* Deserializando base64 en buffer de iv. */
-  iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
+  iv = deserialize_base64_to_buffer(iv_base64, &iv_len);
 
   /* Asignar memoria dinamica suficiente para el texto plano. */
-  datafile = (char *)malloc(enc_datafile_len);
-  if (datafile == NULL)
+  data = (char *)malloc(enc_data_len);
+  if (data == NULL)
   {
     perror("error: colud not allocate memory");
     return -1;
   }
 
-  /* Desencriptar archivo de datos. */
-  decrypt(enc_datafile, enc_datafile_len, private_key, iv_buffer, datafile);
+  /* Por algun motivo cuando hay 0 bytes que desencriptar da problemas para la funcion decrypt. */
+  if (enc_data_len < 1)
+  {
+    free(data);
+    free(enc_data_base64);
+    free(enc_data);
+    free(iv_base64);
+    free(iv);
+    errno = EINVAL;
+    if (logs)
+      perror("error: password name has not been found");
+    return 0;
+  }
 
-  free(enc_datafile_base64);
-  free(enc_datafile);
+  /* Desencriptar archivo de datos. */
+  decrypt(enc_data, enc_data_len, private_key, iv, data);
+
+  free(enc_data_base64);
+  free(enc_data);
   free(iv_base64);
-  free(iv_buffer);
+  free(iv);
 
   /* Iterar sobre cada linea. */
-  slnch = datafile - 1;
+  slnch = data - 1;
   do
   {
     slnch++; // Primer caracter de linea.
@@ -89,7 +103,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
     /* Manejando error por nombre demasiado largo. */
     if (lnch - slnch >= MAX_PASSWD_NAME)
     {
-      free(datafile);
+      free(data);
       errno = ENOMEM;
       if (logs)
         perror("error: password is corrupted as its name is too much long");
@@ -101,7 +115,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
       if (lnch - slnch <= 0) // Ignora contraseñas sin nombre o lineas vacias.
         continue;
 
-      free(datafile);
+      free(data);
       errno = EILSEQ;
       if (logs)
         perror("error: password is corrupted since it does not have any value");
@@ -130,7 +144,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
         /* Manejando error de longitud de password. */
         if (lnch - password >= MAX_PASSWD - 1)
         {
-          free(datafile);
+          free(data);
           errno = ENOMEM;
           if (logs)
             perror("error: password is corrupted, it is too much long");
@@ -139,14 +153,14 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
-          free(datafile);
+          free(data);
           errno = EILSEQ;
           if (logs)
             perror("error: password is corrupted since it contains space characters");
           return -1;
         }
 
-        free(datafile);
+        free(data);
         return 1;
       }
       else
@@ -160,7 +174,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
         /* Manejando error de longitud de password. */
         if (lnch - password >= MAX_PASSWD - 1)
         {
-          free(datafile);
+          free(data);
           errno = ENOMEM;
           if (logs)
             perror("error: password file is corrupted since there are too much long passwords");
@@ -169,7 +183,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
         /* Manejando error de corrupcion en el archivo (espacio en contraseña). */
         else if (*lnch == ' ')
         {
-          free(datafile);
+          free(data);
           errno = EILSEQ;
           if (logs)
             perror("error: password file is corrupted since there are passwords which contains space characters");
@@ -181,7 +195,7 @@ int getpasswd(char *passwd, char *passwd_name, char *private_key, int logs)
     }
   } while (*slnch);
 
-  free(datafile);
+  free(data);
   errno = EINVAL;
   if (logs)
     perror("error: password name has not been found");
@@ -227,21 +241,21 @@ int setpasswd(char *password_name, char *password, char *private_key)
 
   char
       *iv_base64,
-      *iv_buffer,
-      *datafile,
-      *enc_datafile,
-      *new_enc_datafile,
-      *enc_datafile_base64,
-      *new_enc_datafile_base64;
+      *iv,
+      *data,
+      *enc_data,
+      *new_enc_data,
+      *enc_data_base64,
+      *new_enc_data_base64;
 
   size_t
       iv_base64_len,
-      iv_buffer_len,
-      datafile_len,
-      enc_datafile_len,
-      new_enc_datafile_len,
-      enc_datafile_base64_len,
-      new_enc_datafile_base64_len;
+      iv_len,
+      data_len,
+      enc_data_len,
+      new_enc_data_len,
+      enc_data_base64_len,
+      new_enc_data_base64_len;
 
   /* Manejando error de obtencion de ruta de archivo. */
   if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
@@ -250,63 +264,60 @@ int setpasswd(char *password_name, char *password, char *private_key)
     return -1;
 
   /* Manejar error de lectura de archivos. */
-  if ((enc_datafile_base64 = read_file(datafile_path, &enc_datafile_base64_len)) == NULL)
+  if ((enc_data_base64 = read_file(datafile_path, &enc_data_base64_len)) == NULL)
     return -1;
   if ((iv_base64 = read_file(ivfile_path, &iv_base64_len)) == NULL)
     return -1;
 
   /* Deserializar archivo de datos en binary buffer. */
-  enc_datafile = deserialize_base64_to_buffer(enc_datafile_base64, &enc_datafile_len);
+  enc_data = deserialize_base64_to_buffer(enc_data_base64, &enc_data_len);
 
   /* Deserializar iv en base64 a binary buffer. */
-  iv_buffer = deserialize_base64_to_buffer(iv_base64, &iv_buffer_len);
+  iv = deserialize_base64_to_buffer(iv_base64, &iv_len);
 
   /* Asignar memoria dinamica suficiente para el texto plano. Se hace mas grande como sea necesario para albergar una linea mas.*/
-  datafile = (char *)malloc(enc_datafile_len + MAXLN);
-  if (datafile == NULL)
+  data = (char *)malloc(enc_data_len + MAXLN);
+  if (data == NULL)
   {
     perror("error: colud not allocate memory");
     return -1;
   }
 
   /* Desencriptar archivo de datos en texto plano. */
-  decrypt(enc_datafile, enc_datafile_len, private_key, iv_buffer, datafile);
-
-  /* Obtener longitud del texto plano. */
-  datafile_len = strlen(datafile);
+  data_len = decrypt(enc_data, enc_data_len, private_key, iv, data);
 
   /* Introducir linea en texto plano. */
-  snprintf(datafile + datafile_len, MAXLN, "%s %s\n", password_name, password);
-  datafile_len = strlen(datafile);
+  snprintf(data + data_len, MAXLN, "%s %s\n", password_name, password);
+  data_len = strlen(data);
 
   /* Asignar memoria dinamica para nuevo archivo encriptado. */
-  new_enc_datafile = (char *)malloc(datafile_len + AES_BLOCK_SIZE - (datafile_len % 16));
-  if (new_enc_datafile == NULL)
+  new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
+  if (new_enc_data == NULL)
   {
     perror("error: colud not allocate memory");
     return -1;
   }
 
   // Volver a encriptar y guardar archivo
-  new_enc_datafile_len = encrypt(datafile, datafile_len, private_key, iv_buffer, new_enc_datafile);
+  new_enc_data_len = encrypt(data, data_len, private_key, iv, new_enc_data);
 
   /* Serializacion de buffer cifrado. */
-  new_enc_datafile_base64 = serialize_buffer_to_base64(new_enc_datafile, new_enc_datafile_len);
-  new_enc_datafile_base64_len = strlen(new_enc_datafile_base64);
+  new_enc_data_base64 = serialize_buffer_to_base64(new_enc_data, new_enc_data_len);
+  new_enc_data_base64_len = strlen(new_enc_data_base64);
 
-  free(new_enc_datafile);
-  free(enc_datafile);
-  free(datafile);
+  free(new_enc_data);
+  free(enc_data);
+  free(data);
   free(iv_base64);
-  free(iv_buffer);
+  free(iv);
 
-  if (write_file(datafile_path, new_enc_datafile_base64, new_enc_datafile_base64_len) != 0)
+  if (write_file(datafile_path, new_enc_data_base64, new_enc_data_base64_len) != 0)
   {
-    free(new_enc_datafile_base64);
+    free(new_enc_data_base64);
     return -1;
   }
 
-  free(new_enc_datafile_base64);
+  free(new_enc_data_base64);
   return 0;
 }
 
