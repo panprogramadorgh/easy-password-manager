@@ -206,6 +206,7 @@ int setpasswd(char *password_name, char *password, char *private_key)
 {
   /* Errores de formato de contraseña. */
   size_t password_name_len, password_len;
+
   if ((password_name_len = strlen(password_name)) > MAX_PASSWD_NAME)
   {
     errno = EINVAL;
@@ -234,39 +235,33 @@ int setpasswd(char *password_name, char *password, char *private_key)
     return -1;
   }
 
-  char datafile_path[MAX_PATH_LEN]; // Ruta al archivo de datos
-  char ivfile_path[MAX_PATH_LEN];   // Ruta al archivo de iv
-
-  // TODO: Minizar uso de bloques de memoria diferentes en lugar de redimensionarlos.
+  char data_path[MAX_PATH_LEN]; // Ruta al archivo de datos
+  char iv_path[MAX_PATH_LEN];   // Ruta al archivo de iv
 
   char
-      *iv_base64,
       *iv,
+      *iv_base64,
       *data,
       *enc_data,
-      *new_enc_data,
-      *enc_data_base64,
-      *new_enc_data_base64;
+      *enc_data_base64;
 
   size_t
-      iv_base64_len,
       iv_len,
+      iv_base64_len,
       data_len,
       enc_data_len,
-      new_enc_data_len,
-      enc_data_base64_len,
-      new_enc_data_base64_len;
+      enc_data_base64_len;
 
   /* Manejando error de obtencion de ruta de archivo. */
-  if (get_datadir_file_path(datafile_path, DATAFILE_NAME) == -1)
+  if (get_datadir_file_path(data_path, DATAFILE_NAME) == -1)
     return -1;
-  if (get_datadir_file_path(ivfile_path, IVFILE_NAME) == -1)
+  if (get_datadir_file_path(iv_path, IVFILE_NAME) == -1)
     return -1;
 
   /* Manejar error de lectura de archivos. */
-  if ((enc_data_base64 = read_file(datafile_path, &enc_data_base64_len)) == NULL)
+  if ((enc_data_base64 = read_file(data_path, &enc_data_base64_len)) == NULL)
     return -1;
-  if ((iv_base64 = read_file(ivfile_path, &iv_base64_len)) == NULL)
+  if ((iv_base64 = read_file(iv_path, &iv_base64_len)) == NULL)
     return -1;
 
   /* Deserializar archivo de datos en binary buffer. */
@@ -286,38 +281,42 @@ int setpasswd(char *password_name, char *password, char *private_key)
   /* Desencriptar archivo de datos en texto plano. */
   data_len = decrypt(enc_data, enc_data_len, private_key, iv, data);
 
+  free(iv_base64);
+  free(enc_data);
+  free(enc_data_base64);
+
   /* Introducir linea en texto plano. */
   snprintf(data + data_len, MAXLN, "%s %s\n", password_name, password);
   data_len = strlen(data);
 
   /* Asignar memoria dinamica para nuevo archivo encriptado. */
-  new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
-  if (new_enc_data == NULL)
+  enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
+  if (enc_data == NULL)
   {
     perror("error: colud not allocate memory");
     return -1;
   }
 
   // Volver a encriptar y guardar archivo
-  new_enc_data_len = encrypt(data, data_len, private_key, iv, new_enc_data);
+  enc_data_len = encrypt(data, data_len, private_key, iv, enc_data);
 
   /* Serializacion de buffer cifrado. */
-  new_enc_data_base64 = serialize_buffer_to_base64(new_enc_data, new_enc_data_len);
-  new_enc_data_base64_len = strlen(new_enc_data_base64);
+  enc_data_base64 = serialize_buffer_to_base64(enc_data, enc_data_len);
+  enc_data_base64_len = strlen(enc_data_base64);
 
-  free(new_enc_data);
-  free(enc_data);
-  free(data);
-  free(iv_base64);
-  free(iv);
-
-  if (write_file(datafile_path, new_enc_data_base64, new_enc_data_base64_len) != 0)
+  if (write_file(data_path, enc_data_base64, enc_data_base64_len) != 0)
   {
-    free(new_enc_data_base64);
+    free(iv);
+    free(data);
+    free(enc_data);
+    free(enc_data_base64);
     return -1;
   }
 
-  free(new_enc_data_base64);
+  free(iv);
+  free(data);
+  free(enc_data);
+  free(enc_data_base64);
   return 0;
 }
 
@@ -331,21 +330,17 @@ int rmpasswd(char *password_name, char *private_key)
   char iv_path[MAX_PATH_LEN];
 
   char
-      *enc_data_base64,
-      *enc_data, // binary buffer
-      *new_enc_data,
-      *new_enc_data_base64,
-      *data,
+      *iv,
       *iv_base64,
-      *iv;
+      *data,
+      *enc_data,
+      *enc_data_base64;
   size_t
-      enc_data_base64_len,
-      enc_data_len,
-      new_enc_data_len,
-      new_enc_data_base64_len,
-      data_len,
+      iv_len,
       iv_base64_len,
-      iv_len;
+      data_len,
+      enc_data_len,
+      enc_data_base64_len;
 
   if (get_datadir_file_path(data_path, DATAFILE_NAME) != 0)
     return -1;
@@ -375,9 +370,9 @@ int rmpasswd(char *password_name, char *private_key)
   /* Desencriptar buffer. */
   decrypt(enc_data, enc_data_len, private_key, iv, data);
 
-  free(enc_data_base64);
-  free(enc_data);
   free(iv_base64);
+  free(enc_data);
+  free(enc_data_base64);
 
   char *lnch,
       *slnch;
@@ -410,35 +405,31 @@ int rmpasswd(char *password_name, char *private_key)
       for (lnch = slnch + offset; *lnch; lnch++)
         lnch[-offset] = *lnch;
       lnch[-offset] = '\0';
-
-      /* Obtener nueva longitud de datos. */
       data_len = strlen(data);
 
       /* Nuevos datos encriptados en buffer binario. */
-      new_enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
+      enc_data = (char *)malloc(data_len + AES_BLOCK_SIZE - (data_len % 16));
 
       /* Encriptar nuevos datosen buffer binaio. */
-      encrypt(data, data_len, private_key, iv, new_enc_data);
-      new_enc_data_len = strlen(new_enc_data);
+      enc_data_len = encrypt(data, data_len, private_key, iv, enc_data);
 
       /* Serializar nuevos datos encriptadose en base64. */
-      new_enc_data_base64 = serialize_buffer_to_base64(new_enc_data, new_enc_data_len);
-      new_enc_data_base64_len = strlen(new_enc_data_base64);
+      enc_data_base64 = serialize_buffer_to_base64(enc_data, enc_data_len);
+      enc_data_base64_len = strlen(enc_data_base64);
 
       /* Escribir nuevo buffer en archivo. */
-      if (write_file(data_path, new_enc_data_base64, new_enc_data_base64_len) != 0)
+      if (write_file(data_path, enc_data_base64, enc_data_base64_len) != 0)
       {
-        free(data);
-        free(new_enc_data_base64);
-        free(new_enc_data);
         free(iv);
+        free(data);
+        free(enc_data);
+        free(enc_data_base64);
         return -1;
       }
-
-      free(data);
-      free(new_enc_data_base64);
-      free(new_enc_data);
       free(iv);
+      free(data);
+      free(enc_data);
+      free(enc_data_base64);
       return 0;
     }
     else
