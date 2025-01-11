@@ -42,7 +42,7 @@ argon_params = {
     "memory_cost": 1048576,
     "parallelism": 1,
     "hash_len": 32,
-    "type": Type.I }
+    "type": Type.ID }
 
 argon_str = hash_secret(**argon_params).decode()
 
